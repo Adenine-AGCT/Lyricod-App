@@ -1,6 +1,6 @@
 # Lyricod for Windows
 
-English | [简体中文](README.zh-CN.md)
+## English | [简体中文](README.zh-CN.md)
 
 Lyricod displays synced lyrics on Windows, with word-by-word highlighting, desktop lyrics, a lyric island at the top of the screen, and a separate lyrics window.
 
