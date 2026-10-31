@@ -47,7 +47,7 @@ View the whole song in a separate window, with optional album artwork in the bac
 
 Lyricod also runs in the system tray. Open its tray panel to control playback, toggle lyric views, choose lyrics, or adjust the current song's timing. Global shortcuts are available for common actions.
 
-<img src="assets/tray-panel.png" alt="Lyricod tray panel with playback controls and lyric settings" width="360">
+<img src="assets/tray-panel.en.png" alt="Lyricod tray panel with playback controls and lyric settings" width="360">
 
 ## Supported players
 
@@ -65,7 +65,7 @@ Lyricod searches NetEase Cloud Music, QQ Music, and [LRCLIB](https://lrclib.net)
 
 If Lyricod finds the wrong song, open Choose Lyrics to compare search results and preview the lyrics before selecting one. Your choice and any timing adjustment are saved for that song, even if you clear the lyrics cache.
 
-![Choose Lyrics dialog comparing search results and previewing lyrics](assets/choose-lyrics.png)
+![Choose Lyrics dialog comparing search results and previewing lyrics](assets/choose-lyrics.en.png)
 
 You can adjust lyric timing from the tray panel or Settings > Lyrics.
 
