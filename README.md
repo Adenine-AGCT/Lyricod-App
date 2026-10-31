@@ -8,27 +8,46 @@ It works with Spotify, QQ Music, NetEase Cloud Music, Apple Music, and supported
 
 [Download Lyricod](https://github.com/Indarkdust/Lyricod-App/releases)
 
+![Lyricod Glass lyric island showing synchronized lyrics](assets/island-glass.gif)
+
 ## Ways to view lyrics
 
 ### Lyricod Island
 
 The island sits at the top of the screen by default and highlights lyrics word by word as the song plays. It adjusts its width to the current line and can show translations, pronunciation, or the next line. Lyric colours can follow the album artwork or use a colour you choose.
 
+![Lyricod Island highlighting lyrics as music plays](assets/island.gif)
+
 Hovering over the island can expand it into a mini player or hide it temporarily so you can use what's behind it. You can also combine both actions: the island hides when the pointer moves onto it. To expand the mini player, move across the island horizontally, then down (or up, for a floating island). The island can fade out after playback pauses.
+
+![Expanding the lyric island into a mini player](assets/island-gesture.gif)
+
+<details>
+<summary>How to expand the mini player with the mouse</summary>
+
+![Move sideways across the island, then move down](assets/island-gesture-guide.png)
+
+</details>
 
 To move the island somewhere else, switch to Floating mode in Settings > Lyricod Island. The floating island has rounded corners on all sides and can be dragged anywhere once unlocked. Near screen edges, it expands inward to keep the lyrics and mini player on screen.
 
-Lyricod Glass gives the island a transparent background. On Windows 11, the default Liquid effect adds a slight blur, edge refraction and highlights. You can also choose Clear or Frosted, and adjust transparency, tint, blur and refraction. When using the Liquid effect, the island won't appear in screenshots, recordings or screen sharing.
+Lyricod Glass gives the island a transparent background. On Windows 11, the default Liquid effect adds a slight blur, edge refraction and highlights. You can also choose Clear or Frosted, and adjust transparency, tint, blur and refraction. During normal use, the Liquid effect excludes the island from screenshots, recordings and screen sharing to prevent capture feedback.
 
 ### Desktop lyrics
 
 Display one or two lines above other windows. When locked, clicks pass through the lyrics. Unlock them to drag the lyrics to a different position.
 
+![Desktop lyrics with word-by-word highlighting](assets/desktop-lyrics.gif)
+
 ### Lyrics window
 
 View the whole song in a separate window, with optional album artwork in the background. Lyrics scroll with playback, and clicking a line seeks to that point in the song. Press F11 for full screen.
 
+![Separate lyrics window with album art and synchronized lines](assets/lyrics-window.png)
+
 Lyricod also runs in the system tray. Open its tray panel to control playback, toggle lyric views, choose lyrics, or adjust the current song's timing. Global shortcuts are available for common actions.
+
+<img src="assets/tray-panel.png" alt="Lyricod tray panel with playback controls and lyric settings" width="360">
 
 ## Supported players
 
@@ -45,6 +64,8 @@ For videos in browsers, Lyricod only displays lyrics when it can match the conte
 Lyricod searches NetEase Cloud Music, QQ Music, and [LRCLIB](https://lrclib.net). Depending on the song and source, results may include word-by-word or line-synced lyrics, translations, and pronunciation. Lyrics are cached on your PC for later playback.
 
 If Lyricod finds the wrong song, open Choose Lyrics to compare search results and preview the lyrics before selecting one. Your choice and any timing adjustment are saved for that song, even if you clear the lyrics cache.
+
+![Choose Lyrics dialog comparing search results and previewing lyrics](assets/choose-lyrics.png)
 
 You can adjust lyric timing from the tray panel or Settings > Lyrics.
 
