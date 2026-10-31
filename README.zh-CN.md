@@ -121,9 +121,11 @@ InfLink-rs 已在网易云音乐 3.1.20 至 3.1.41 和 2.10.13 版本上测试�
 - Windows 10 1809 或更新版本，支持 x64 和 ARM64。
 - 音量条跟随音乐跳动需要 Windows 11；Windows 10 上使用预设动画。
 
-## 致谢
+## 鸣谢与版权
 
 Lyricod 的灵感来自 [Lyricify](https://github.com/WXRIW/Lyricify-App)。Lyricod Island 参考了 WXRIW 设计的 Dynamic Lyrics Island（CC BY-SA 4.0）。QQ 音乐逐字歌词解密代码移植自 [Lyricify Lyrics Helper](https://github.com/WXRIW/Lyricify-Lyrics-Helper)（Apache License 2.0）。拼音功能使用 [ToolGood.Words](https://github.com/toolgood/ToolGood.Words)（Apache License 2.0）；托盘图标和部分窗口功能使用 [WinUIEx](https://github.com/dotMorten/WinUIEx)（MIT）。Lyricod Glass 的液态玻璃效果使用 Microsoft 的 [Win2D](https://github.com/microsoft/Win2D) 绘制。
+
+README 中的截图和演示动图可能包含歌曲歌词、专辑封面及其他第三方内容，仅用于展示 Lyricod 的功能。相关内容的版权归各自权利人所有，不受本项目 Apache License 2.0 的许可范围涵盖。
 
 歌词版权归各自权利人所有。Lyricod 与 Microsoft、网易和腾讯没有关联。
 
