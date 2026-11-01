@@ -3,6 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>Lyricod.Core.Tests</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
@@ -11,6 +12,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Lyricod.Core/Lyricod.Core.csproj" />
     <Compile Include="../../src/Lyricod.App/Settings.cs" Link="Settings.cs" />
+    <Compile Include="../../src/Lyricod.App/Platform/DisplayCaptureExclusion.cs" Link="DisplayCaptureExclusion.cs" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

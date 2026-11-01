@@ -5,3 +5,7 @@ TestResults/
 *.user
 publish/
 .DS_Store
+
+# Local review and test notes, not project documentation.
+/docs/testing/
+/docs/recording-compatibility.md

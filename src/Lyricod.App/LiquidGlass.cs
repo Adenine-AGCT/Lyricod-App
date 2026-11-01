@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Lyricod.Core;
+using Lyricod.Platform;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Effects;
 using Microsoft.Graphics.Canvas.UI.Composition;
@@ -16,8 +17,8 @@ namespace Lyricod;
 /// Lyricod Glass's liquid effect: what's behind the island, captured from the screen
 /// and drawn as its background, lightly blurred and bent at the edges like the rim of a lens, with
 /// the light its edge catches (the 3D effect) drawn to follow the same curve. The
-/// island hides itself from screen capture while this runs, or it would capture itself, so it
-/// doesn't show in screenshots, recordings or screen sharing then. Windows 11 only: Windows 10
+/// island is excluded from its own capture session on supported Windows builds; older builds
+/// need global capture exclusion to avoid feedback. Windows 11 only: Windows 10
 /// outlines the whole screen in yellow while anything captures it.
 /// </summary>
 sealed class LiquidGlass : IDisposable
@@ -30,6 +31,7 @@ sealed class LiquidGlass : IDisposable
 
     readonly DispatcherQueue _ui;
     readonly Action _failed;
+    readonly nint _window;
     readonly CanvasDevice _device = CanvasDevice.GetSharedDevice();
     readonly CompositionGraphicsDevice _graphics;
     readonly CompositionDrawingSurface _surface;
@@ -59,6 +61,9 @@ sealed class LiquidGlass : IDisposable
     /// <summary>Capturing or drawing failed (the graphics card reset, the screen went away): the island falls back.</summary>
     public bool Failed { get; private set; }
 
+    /// <summary>Only our monitor session excludes the island; other recorders can see it live.</summary>
+    public bool SessionExclusion { get; private set; }
+
     /// <summary>The island's background: put it behind the lyrics, sized to the island.</summary>
     public SpriteVisual Visual { get; }
 
@@ -78,10 +83,11 @@ sealed class LiquidGlass : IDisposable
     }
 
     /// <param name="failed">Called (on the UI thread) when capturing or drawing fails.</param>
-    public LiquidGlass(Compositor compositor, DispatcherQueue ui, Action failed)
+    public LiquidGlass(Compositor compositor, DispatcherQueue ui, nint window, Action failed)
     {
         _ui = ui;
         _failed = failed;
+        _window = window;
         _graphics = CanvasComposition.CreateCompositionGraphicsDevice(compositor, _device);
         _surface = _graphics.CreateDrawingSurface(new Windows.Foundation.Size(1, 1),
             Microsoft.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized, Microsoft.Graphics.DirectX.DirectXAlphaMode.Premultiplied);
@@ -132,7 +138,46 @@ sealed class LiquidGlass : IDisposable
         _session = _pool.CreateCaptureSession(_item);
         _session.IsCursorCaptureEnabled = false;
         Borderless(_session);
+        // Configure each new monitor session before its first frame: no unexcluded frames can
+        // enter the pool. Do not briefly set global exclusion on the supported path either:
+        // even a short global exclusion can interrupt another recorder.
+        SessionExclusion = DisplayCaptureExclusion.TryExcludeWindow(((IWinRTObject)_session).NativeObject.ThisPtr,
+            _window, Environment.OSVersion.Version.Build);
+        if (SessionExclusion) Frozen = false;
+        SetCaptureAffinity(SessionExclusion || Frozen ? Win32.WDA_NONE : Win32.WDA_EXCLUDEFROMCAPTURE);
         _session.StartCapture();
+    }
+
+    /// <summary>The legacy screenshot workaround is unnecessary with session-only exclusion.</summary>
+    public bool ShowInScreenshots()
+    {
+        if (SessionExclusion || Failed) return false;
+        try
+        {
+            Frozen = true; // stop consuming frames before letting capture see this window
+            SetCaptureAffinity(Win32.WDA_NONE);
+            return true;
+        }
+        catch (Exception e) { Fail(e); return false; }
+    }
+
+    public void EndScreenshot()
+    {
+        if (Failed) return;
+        try
+        {
+            if (!SessionExclusion) SetCaptureAffinity(Win32.WDA_EXCLUDEFROMCAPTURE);
+            Frozen = false;
+        }
+        catch (Exception e) { Fail(e); }
+    }
+
+    void SetCaptureAffinity(uint affinity)
+    {
+        // Never run live capture without either exclusion mechanism: that would feed the
+        // island back into itself. Failure takes the existing clear-glass fallback instead.
+        if (!Win32.SetWindowDisplayAffinity(_window, affinity))
+            throw new InvalidOperationException("Could not set the island's capture affinity.");
     }
 
     /// <summary>Frames arrive on a capture thread; the newest is drawn on the UI thread.</summary>
@@ -239,6 +284,7 @@ sealed class LiquidGlass : IDisposable
     {
         _session?.Dispose();
         _session = null;
+        SessionExclusion = false;
         if (_pool != null)
         {
             _pool.FrameArrived -= OnFrameArrived;
@@ -251,6 +297,7 @@ sealed class LiquidGlass : IDisposable
         _frame = null;
         _item = null;
         _monitor = 0;
+        Win32.SetWindowDisplayAffinity(_window, Win32.WDA_NONE);
     }
 
     public void Dispose()

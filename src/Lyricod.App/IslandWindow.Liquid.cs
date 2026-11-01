@@ -10,7 +10,8 @@ namespace Lyricod;
 /// <summary>
 /// Lyricod Glass's liquid effect (see <see cref="LiquidGlass"/>). It runs only while
 /// it's the chosen glass effect and the island shows (not while the pointer hides it or it's being
-/// moved); only then is the island hidden from screen capture, unless asked to show in screenshots.
+/// moved). Older Windows builds hide the island globally from capture; updated builds exclude
+/// it only from its own session, so screenshots and other recordings can see the live glass.
 /// </summary>
 public sealed partial class IslandWindow
 {
@@ -19,6 +20,10 @@ public sealed partial class IslandWindow
 
     LiquidGlass? _liquid;
     DispatcherQueueTimer? _screenshotTimer;
+
+    internal string LiquidCaptureStatus => _liquid == null ? "inactive" : _liquid.Failed ? "failed"
+        : _liquid.SessionExclusion ? "session-only exclusion (live, recordable)"
+        : _liquid.Frozen ? "global exclusion fallback (screenshot pause)" : "global exclusion fallback";
 
     bool WantsLiquid => Glass && _settings.GlassEffect == GlassEffect.Liquid && LiquidGlass.IsSupported && !Movable;
 
@@ -33,10 +38,8 @@ public sealed partial class IslandWindow
         }
         if (_liquid == null)
         {
-            // It would capture itself otherwise; visible to screenshots again as soon as it stops.
-            Win32.SetWindowDisplayAffinity(_overlay.Handle, Win32.WDA_EXCLUDEFROMCAPTURE);
             // If it fails later (the graphics card reset, the screen went away), fall back to clear glass.
-            _liquid = new LiquidGlass(ElementCompositionPreview.GetElementVisual(LiquidHost).Compositor, DispatcherQueue,
+            _liquid = new LiquidGlass(ElementCompositionPreview.GetElementVisual(LiquidHost).Compositor, DispatcherQueue, _overlay.Handle,
                 () => DispatcherQueue.TryEnqueue(() => { if (_liquid?.Failed == true) ApplyTheme(); }));
             ElementCompositionPreview.SetElementChildVisual(LiquidHost, _liquid.Visual);
         }
@@ -53,9 +56,7 @@ public sealed partial class IslandWindow
     /// </summary>
     public void ShowInScreenshots()
     {
-        if (_liquid == null) return;
-        _liquid.Frozen = true;
-        Win32.SetWindowDisplayAffinity(_overlay.Handle, Win32.WDA_NONE);
+        if (_liquid?.ShowInScreenshots() != true) return;
         if (_screenshotTimer == null)
         {
             _screenshotTimer = DispatcherQueue.CreateTimer();
@@ -72,8 +73,7 @@ public sealed partial class IslandWindow
     {
         _screenshotTimer?.Stop();
         if (_liquid == null) return;
-        Win32.SetWindowDisplayAffinity(_overlay.Handle, Win32.WDA_EXCLUDEFROMCAPTURE);
-        _liquid.Frozen = false;
+        _liquid.EndScreenshot();
     }
 
     void StopLiquid()
@@ -83,7 +83,6 @@ public sealed partial class IslandWindow
         ElementCompositionPreview.SetElementChildVisual(LiquidHost, null);
         _liquid.Dispose();
         _liquid = null;
-        Win32.SetWindowDisplayAffinity(_overlay.Handle, Win32.WDA_NONE);
     }
 
     /// <summary>Keeps the liquid glass on what's behind the island as it moves, grows and changes look.</summary>

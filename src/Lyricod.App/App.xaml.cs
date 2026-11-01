@@ -28,6 +28,8 @@ public partial class App : Application
     GlobalShortcuts? _shortcuts;
     bool _quitting;
 
+    internal string GlassCaptureDiagnostics => _island?.LiquidCaptureStatus ?? "inactive";
+
     public App() => InitializeComponent();
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)

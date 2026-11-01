@@ -124,7 +124,7 @@
   <data name="LiquidBlur" xml:space="preserve"><value>Blur</value></data>
   <data name="LiquidRefraction" xml:space="preserve"><value>Edge refraction</value></data>
   <data name="LiquidScreenshot" xml:space="preserve"><value>Screenshots</value></data>
-  <data name="LiquidScreenshotDetail" xml:space="preserve"><value>While the liquid effect is on, the island doesn't appear in screenshots. Click the button, then take your screenshot within 10 seconds.</value></data>
+  <data name="LiquidScreenshotDetail" xml:space="preserve"><value>On updated Windows builds the live island already appears in screenshots. On older builds, click the button, then take your screenshot within 10 seconds; the glass background briefly pauses.</value></data>
   <data name="LiquidScreenshotButton" xml:space="preserve"><value>Show in screenshots</value></data>
   <data name="LiquidScreenshotCountdown" xml:space="preserve"><value>Take your screenshot ({0})</value></data>
   <data name="OnHover" xml:space="preserve"><value>When the pointer enters</value></data>

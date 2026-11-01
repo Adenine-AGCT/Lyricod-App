@@ -124,7 +124,7 @@
   <data name="LiquidBlur" xml:space="preserve"><value>模糊程度</value></data>
   <data name="LiquidRefraction" xml:space="preserve"><value>边缘折射</value></data>
   <data name="LiquidScreenshot" xml:space="preserve"><value>截图</value></data>
-  <data name="LiquidScreenshotDetail" xml:space="preserve"><value>使用液态玻璃效果时，截图中不会显示歌词岛。点击右侧按钮后，10 秒内截图即可包含歌词岛。</value></data>
+  <data name="LiquidScreenshotDetail" xml:space="preserve"><value>更新后的 Windows 版本可直接截取实时歌词岛。较旧版本需点击右侧按钮，再在 10 秒内截图；此时玻璃背景会短暂停止更新。</value></data>
   <data name="LiquidScreenshotButton" xml:space="preserve"><value>在截图中显示</value></data>
   <data name="LiquidScreenshotCountdown" xml:space="preserve"><value>请截图（{0}）</value></data>
   <data name="OnHover" xml:space="preserve"><value>鼠标移入时</value></data>

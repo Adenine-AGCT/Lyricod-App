@@ -342,7 +342,7 @@ public sealed partial class SettingsWindow
             TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true,
             Visibility = Visibility.Collapsed, // hidden until asked for
         };
-        void RefreshDiagnostics() => diagnostics.Text = _model.DiagnosticsText;
+        void RefreshDiagnostics() => diagnostics.Text = _model.DiagnosticsText + "\nGlass capture: " + ((App)Application.Current).GlassCaptureDiagnostics;
         _songWatchers.Add(RefreshDiagnostics);
         Watch(nameof(Settings.Offset), RefreshDiagnostics);
         RefreshDiagnostics();
