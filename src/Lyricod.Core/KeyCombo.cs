@@ -14,8 +14,11 @@ public readonly record struct KeyCombo(KeyModifiers Modifiers, uint VirtualKey)
 
     public bool IsValid => ((uint)Modifiers & ~15u) == 0 && VirtualKey is >= 8 and <= 254 && !IsModifier(VirtualKey);
 
-    /// <summary>Ordinary typing must remain available in every app.</summary>
-    public bool IsUsable => IsValid && ((Modifiers & (KeyModifiers.Control | KeyModifiers.Alt | KeyModifiers.Win)) != 0
+    /// <summary>Windows reserves F12 for the debugger, with or without modifiers.</summary>
+    public bool IsReserved => VirtualKey == 0x7B;
+
+    /// <summary>Ordinary typing and the debugger key must remain available in every app.</summary>
+    public bool IsUsable => IsValid && !IsReserved && ((Modifiers & (KeyModifiers.Control | KeyModifiers.Alt | KeyModifiers.Win)) != 0
         || VirtualKey is >= 0x70 and <= 0x87);
 
     public string Stored => FormattableString.Invariant($"{(uint)Modifiers}:{VirtualKey}");

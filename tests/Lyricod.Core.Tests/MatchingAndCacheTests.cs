@@ -113,11 +113,11 @@ public class MatchingAndCacheTests
         var file = Path.Combine(Path.GetTempPath(), "lyricod-tests", Guid.NewGuid() + ".json");
         var track = T("晴天", "周杰伦", 269);
         var overrides = new TrackOverrides(file);
-        overrides[track] = new TrackOverride { Lyrics = new LyricsRef(LyricsSource.Qq, "0039MnYb0qxYhV", 97773), Offset = 0.5 };
+        Assert.True(overrides.TrySet(track, new TrackOverride { Lyrics = new LyricsRef(LyricsSource.Qq, "0039MnYb0qxYhV", 97773), Offset = 0.5 }));
         var reloaded = new TrackOverrides(file);
         Assert.Equal(new LyricsRef(LyricsSource.Qq, "0039MnYb0qxYhV", 97773), reloaded[track].Lyrics);
         Assert.Equal(0.5, reloaded[track].Offset);
-        reloaded[track] = new TrackOverride();
+        Assert.True(reloaded.TrySet(track, new TrackOverride()));
         Assert.DoesNotContain("0039MnYb0qxYhV", File.ReadAllText(file));
     }
 
@@ -135,16 +135,16 @@ public class MatchingAndCacheTests
             var stale = T("Hello", "Singer", 0);
             var to = stale with { Duration = 120 };
             var overrides = new TrackOverrides(file);
-            overrides[stale] = new TrackOverride { NeteaseId = 123, Offset = 1.5 };
-            overrides[to] = new TrackOverride { Lyrics = hasPin ? LyricsRef.Netease(456) : null, Offset = hasOffset ? 0.25 : null };
-            overrides.Move(stale, to);
+            Assert.True(overrides.TrySet(stale, new TrackOverride { NeteaseId = 123, Offset = 1.5 }));
+            Assert.True(overrides.TrySet(to, new TrackOverride { Lyrics = hasPin ? LyricsRef.Netease(456) : null, Offset = hasOffset ? 0.25 : null }));
+            Assert.True(overrides.TryMove(stale, to));
             var saved = new TrackOverrides(file);
             Assert.Equal(LyricsRef.Netease(hasPin ? 456 : 123), saved[to].Lyrics);
             Assert.Equal(hasOffset ? 0.25 : 1.5, saved[to].Offset);
             Assert.True(saved[stale].IsEmpty);
             Assert.DoesNotContain(LyricsProvider.CacheKey(stale), File.ReadAllText(file));
-            saved.Move(stale, to); // missing source is harmless
-            saved.Move(to, to with { Duration = 120.5 }); // same whole-second key
+            Assert.True(saved.TryMove(stale, to)); // missing source is harmless
+            Assert.True(saved.TryMove(to, to with { Duration = 120.5 })); // same whole-second key
             Assert.Equal(saved[to].Lyrics, new TrackOverrides(file)[to].Lyrics);
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }

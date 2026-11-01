@@ -17,11 +17,10 @@ public sealed partial class PlaybackModel
     /// <summary>Nudges this song's timing (positive shows lyrics earlier) and remembers it.</summary>
     public void SetSongOffset(double value)
     {
-        if (Track is not { } t) return;
+        if (!TryApplyPendingDuration() || Track is not { } t) return;
         var o = _overrides[t];
         o.Offset = Math.Round(value, 2);
-        _overrides[t] = o;
-        ApplyOffset();
+        if (TrySaveSongChoice(t, o)) ApplyOffset();
     }
 
     /// <summary>

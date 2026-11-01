@@ -43,8 +43,11 @@ public sealed partial class SettingsWindow
         void Sync()
         {
             bool recording = _recording == action;
-            button.Content = recording ? L.Get("ShortcutPressKeys") : _shortcuts.Combo(action)?.Display(L.Get) ?? L.Get("ShortcutRecord");
-            problem.Text = recording ? _recordingProblem ?? "" : _shortcuts.Failed(action) ? L.Get("ShortcutUnavailable") : "";
+            var combo = _shortcuts.Combo(action);
+            button.Content = recording ? L.Get("ShortcutPressKeys") : combo?.Display(L.Get) ?? L.Get("ShortcutRecord");
+            problem.Text = recording ? _recordingProblem ?? ""
+                : combo is { IsReserved: true } ? L.Get("ShortcutF12Reserved")
+                : _shortcuts.Failed(action) ? L.Get("ShortcutUnavailable") : "";
             problem.Visibility = problem.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         }
         button.Click += (_, _) =>
@@ -93,7 +96,8 @@ public sealed partial class SettingsWindow
         if (Down(VirtualKey.Shift)) modifiers |= KeyModifiers.Shift;
         if (Down(VirtualKey.LeftWindows) || Down(VirtualKey.RightWindows)) modifiers |= KeyModifiers.Win;
         var combo = new KeyCombo(modifiers, key);
-        if (!combo.IsUsable) _recordingProblem = L.Get("ShortcutInvalid");
+        if (combo.IsReserved) _recordingProblem = L.Get("ShortcutF12Reserved");
+        else if (!combo.IsUsable) _recordingProblem = L.Get("ShortcutInvalid");
         else if (_shortcuts.ActionUsing(combo, action) is { } other)
             _recordingProblem = L.Format("ShortcutDuplicate", ShortcutTitle(other));
         else

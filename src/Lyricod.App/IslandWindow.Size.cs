@@ -58,6 +58,7 @@ public sealed partial class IslandWindow
     /// <summary>Fits the displayed text, keeping room for the mini player while expanded.</summary>
     void Resize()
     {
+        if (_closed || !_shown) return;
         double required = _textWidth + 2 * SideWidth;
         double width = _expanded ? Math.Max(required, ExpandedMinWidth) : required;
         double height = RowHeight + (HasSecondRow ? SecondHeight : 0) + (_expanded ? ExpandedHeight : 0);
@@ -74,7 +75,7 @@ public sealed partial class IslandWindow
             {
                 try
                 {
-                    if (_closed || !ReferenceEquals(_widthAnimation, story)) return;
+                    if (_closed || !_shown || !ReferenceEquals(_widthAnimation, story)) return;
                     _widthAnimating = false;
                     _waitingForWidth = false;
                     RevealText();
@@ -105,7 +106,7 @@ public sealed partial class IslandWindow
             _heightAnimation = story;
             story.Completed += (_, _) =>
             {
-                try { if (!_closed && ReferenceEquals(_heightAnimation, story)) Place(); }
+                try { if (!_closed && _shown && ReferenceEquals(_heightAnimation, story)) Place(); }
                 catch (Exception e) { System.Diagnostics.Debug.WriteLine(e); }
             };
             story.Begin();
@@ -149,6 +150,7 @@ public sealed partial class IslandWindow
 
     void RevealText()
     {
+        if (_closed || !_shown) return;
         LyricBox.Opacity = 1;
         Second.Opacity = _secondOpacity;
         if (_transitionPending)
@@ -156,6 +158,21 @@ public sealed partial class IslandWindow
             _transitionPending = false;
             MoveIn();
         }
+    }
+
+    /// <summary>Stop lyric/layout work while hidden, preserving the current size for the exit fade.</summary>
+    void StopContentAnimations()
+    {
+        double width = Pill.Width, height = Pill.Height;
+        _revealTimer.Stop();
+        _lineAnimation?.Stop();
+        _widthAnimation?.Stop();
+        _heightAnimation?.Stop();
+        _lineAnimation = _widthAnimation = _heightAnimation = null;
+        Pill.Width = width;
+        Pill.Height = height;
+        _widthTarget = _heightTarget = double.NaN;
+        _waitingForWidth = _widthAnimating = _transitionPending = false;
     }
 
     double Measure(string text, FontFamily font, double size, Windows.UI.Text.FontWeight weight)

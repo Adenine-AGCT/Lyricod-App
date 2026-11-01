@@ -11,6 +11,7 @@ public sealed partial class IslandWindow
     /// <summary>Top centre of the main display, or (floating) where it was dragged.</summary>
     void Place()
     {
+        if (_closed) return;
         double k = _overlay.Scale;
         if (Floating)
         {
@@ -46,9 +47,7 @@ public sealed partial class IslandWindow
             return;
         }
         _pauseTimer.Stop();
-        if (!_pausedAway) return;
         _pausedAway = false;
-        UpdateVisibility();
     }
 
     void UpdateVisibility()
@@ -60,7 +59,9 @@ public sealed partial class IslandWindow
         if (visible)
         {
             Place();
+            if (_closed || !_shown) return;
             AppWindow.Show(false);
+            if (_closed || !_shown) return;
             _overlay.StripFrame();
             _pointerTimer.Start();
             AnimateShown(true);
@@ -69,6 +70,9 @@ public sealed partial class IslandWindow
         {
             _pointerTimer.Stop();
             _progressTimer.Stop();
+            _pieceTimer.Stop();
+            _sweep.Set(0, 1);
+            StopContentAnimations();
             SetHovered(false);
             _trail.Clear();
             AnimateShown(false, () => { if (!_shown && !_closed) AppWindow.Hide(); });

@@ -55,6 +55,7 @@ public sealed partial class ChooseLyricsWindow : Window
             _model.Changed -= OnModelChanged;
             Fonts.Changed -= OnFontChanged;
         };
+        UpdateSaveError();
         UpdateSong();
     }
 
@@ -69,6 +70,7 @@ public sealed partial class ChooseLyricsWindow : Window
 
     void OnModelChanged(PlaybackModel.Change change)
     {
+        UpdateSaveError();
         if (change.HasFlag(PlaybackModel.Change.Track)) UpdateSong();
         else if (change.HasFlag(PlaybackModel.Change.Lyrics))
         {
@@ -244,15 +246,20 @@ public sealed partial class ChooseLyricsWindow : Window
         }
     }
 
-    void OnAutomatic(object sender, RoutedEventArgs e) { _model.UnpinLyrics(); Close(); }
+    void UpdateSaveError()
+    {
+        SaveErrorText.Text = _model.SongSaveError ?? "";
+        SaveErrorText.Visibility = Shown(_model.SongSaveError != null);
+    }
+
+    void OnAutomatic(object sender, RoutedEventArgs e) { if (_model.TryUnpinLyrics()) Close(); }
     void OnCancel(object sender, RoutedEventArgs e) => Close();
     void OnUse(object sender, RoutedEventArgs e) => UseSelection();
 
     void UseSelection()
     {
         if (!UseButton.IsEnabled || _selection is not { } reference) return;
-        _model.PinLyrics(reference);
-        Close();
+        if (_model.TryPinLyrics(reference)) Close();
     }
 
     static Visibility Shown(bool value) => value ? Visibility.Visible : Visibility.Collapsed;

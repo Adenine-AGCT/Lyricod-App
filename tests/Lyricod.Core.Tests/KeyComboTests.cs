@@ -80,6 +80,25 @@ public class KeyComboTests
     }
 
     [Fact]
+    public void F12CannotBeRegisteredWithAnyModifierButOldBindingsRemainReadable()
+    {
+        for (uint modifiers = 0; modifiers <= 15; modifiers++)
+        {
+            var combo = new KeyCombo((KeyModifiers)modifiers, 0x7B);
+            Assert.True(combo.IsReserved);
+            Assert.False(combo.IsUsable);
+            Assert.True(KeyCombo.TryParse(combo.Stored, out var restored));
+            Assert.Equal(combo, restored);
+            Assert.False(restored.IsUsable);
+            Assert.EndsWith("F12", restored.Display(Label));
+
+            // Neighboring function keys keep their existing registration behavior.
+            Assert.True(new KeyCombo((KeyModifiers)modifiers, 0x7A).IsUsable);
+            Assert.True(new KeyCombo((KeyModifiers)modifiers, 0x7C).IsUsable);
+        }
+    }
+
+    [Fact]
     public void StorageDoesNotDependOnCulture()
     {
         var previous = CultureInfo.CurrentCulture;
