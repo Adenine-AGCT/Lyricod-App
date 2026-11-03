@@ -116,6 +116,10 @@ To find lyrics, Lyricod sends the song title, artist, and duration to NetEase Cl
 
 The island's audio bars use Windows audio APIs to read audio information from the current player. Lyricod does not record, save, or upload audio. You can disable music-reactive bars in Settings > Lyricod Island.
 
+Lyricod Glass's Liquid effect reads the part of the screen behind the island to draw the glass. The image stays on your PC and is not saved or uploaded. To turn this off, choose the Clear or Frosted effect, or the Classic island, in Settings > Lyricod Island.
+
+NetEase Cloud Music sync downloads Lyricod CM Helper from GitHub only when you choose to set it up; the helper then downloads BetterNCM and InfLink-rs from their own releases.
+
 Automatic update checks contact GitHub once a day and can be disabled in Settings > About.
 
 ## Requirements
