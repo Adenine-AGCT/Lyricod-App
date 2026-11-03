@@ -28,7 +28,10 @@ public sealed partial class IslandWindow
     {
         // A saved spot on a screen that's no longer there (unplugged) falls back to the default.
         DisplayArea? display = _settings.IslandX is int sx && _settings.IslandY is int sy
-            ? DisplayArea.GetFromPoint(new PointInt32(_settings.IslandDisplayX ?? sx, _settings.IslandDisplayY ?? sy), DisplayAreaFallback.None) : null;
+            ? DisplayArea.GetFromPoint(new PointInt32(_settings.IslandDisplayX ?? sx, _settings.IslandDisplayY ?? sy), DisplayAreaFallback.None)
+                // A spot saved before the display point (0.5.6 and earlier) can sit just past its display's right or bottom edge.
+                ?? (_settings.IslandDisplayX == null ? DisplayArea.GetFromPoint(new PointInt32(sx - 1, sy - 1), DisplayAreaFallback.None) : null)
+            : null;
         var area = (display ?? DisplayArea.Primary).WorkArea;
         _screenWidth = area.Width / k;
         double x = display != null ? _settings.IslandX!.Value : area.X + area.Width / 2.0;
