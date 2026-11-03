@@ -247,33 +247,34 @@ sealed class LiquidGlass : IDisposable
     void DrawNewest()
     {
         if (_disposed || _pool == null || Failed) return;
+        Direct3D11CaptureFrame? newest = null;
         try
         {
-            Direct3D11CaptureFrame? newest = null;
             while (_pool.TryGetNextFrame() is { } frame)
             {
-                newest?.Dispose();
+                var previous = newest;
                 newest = frame;
+                previous?.Dispose();
             }
             if (newest == null) return;
             if (newest.ContentSize.Width != _poolSize.Width || newest.ContentSize.Height != _poolSize.Height)
             {
-                // The screen's resolution changed.
+                // Return every checked-out surface before resizing the pool.
                 _poolSize = newest.ContentSize;
+                RetireFrame();
+                DisposeOwned(ref newest);
                 _pool.Recreate(_device, Windows.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized, 3, _poolSize);
-            }
-            if (Frozen || Environment.TickCount64 < _skipUntil)
-            {
-                newest.Dispose();
                 return;
             }
-            _screen?.Dispose();
-            _frame?.Dispose();
-            _frame = newest;
+            if (Frozen || Environment.TickCount64 < _skipUntil) return;
+            RetireFrame();
             _screen = CanvasBitmap.CreateFromDirect3D11Surface(_device, newest.Surface);
+            _frame = newest;
+            newest = null; // owned by _frame now
             if (_look != null) Draw(_screen, _look);
         }
         catch (Exception e) { Fail(e); }
+        finally { DisposeOwned(ref newest); }
     }
 
     /// <summary>The part of the screen behind the island: bent at the edges, blurred, a little more vivid, tinted, lit.</summary>
