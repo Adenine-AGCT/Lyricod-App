@@ -37,6 +37,8 @@ public sealed partial class PlaybackModel
     public int ClockVersion => _playhead.Version;
     /// <summary>The last thing that went wrong, for the debug state file.</summary>
     public string? LastError { get; private set; }
+    /// <summary>A recoverable per-song save failure, shown by the settings, chooser and tray.</summary>
+    public string? SongSaveError { get; private set; }
     /// <summary>This song's own offset, on top of the global one.</summary>
     public double SongOffset { get; private set; }
     /// <summary>The cover art (encoded image bytes), once the player hands it over.</summary>
@@ -73,8 +75,10 @@ public sealed partial class PlaybackModel
     Lyrics? _allLyrics;
     CancellationTokenSource? _loading;
     int _artworkTries;
-    /// <summary>The song's length was corrected after it started (and searched again with it).</summary>
+    /// <summary>The song's length correction was already attempted automatically.</summary>
     bool _lengthCorrected;
+    /// <summary>A failed correction can be retried by a manual save, without a polling write loop.</summary>
+    (Track Track, double Duration)? _pendingDurationCorrection;
     bool _refreshing, _refreshAgain;
     int _seekRequest;
     /// <summary>Lyricod is quitting (<see cref="Stop"/>).</summary>
@@ -190,6 +194,8 @@ public sealed partial class PlaybackModel
                 _loading?.Cancel();
                 BestMatchScore = null;
                 IsSearching = false; // the cancelled search won't say it's done
+                SongSaveError = null;
+                _pendingDurationCorrection = null;
                 SongOffset = 0; _playhead.Offset = _settings.Offset;
                 _playhead.Anchor(0, Now, false);
                 _mediaClock.Reset();
@@ -210,6 +216,8 @@ public sealed partial class PlaybackModel
 
         if (trackChanged)
         {
+            SongSaveError = null;
+            _pendingDurationCorrection = null;
             Track = new Track { TrackId = now.TrackId, Title = now.Title, Artist = now.Artist, Album = now.Album, Duration = now.Duration };
             change |= Change.Track;
             ApplyOffset();
@@ -224,12 +232,9 @@ public sealed partial class PlaybackModel
         {
             // Some players (QQ Music) report a new song with the last one's length for a moment.
             // The length helps pick the right lyrics, so search again with the real one, once.
-            _lengthCorrected = true;
-            _loading?.Cancel();
-            Track = _provider.CorrectDuration(current, now.Duration, _overrides);
-            change |= Change.Track;
-            ApplyOffset();
-            LoadLyrics(Track, ignoreCache: false);
+            _lengthCorrected = true; // one automatic attempt per song, including an I/O failure
+            _pendingDurationCorrection = (current, now.Duration);
+            if (TryApplyPendingDuration()) SetSongSaveError(null);
         }
         // Browsers hand over the cover a moment after the song: ask again on the next few reports.
         if (Artwork == null && _artworkTries < 4) LoadArtwork(now.TrackId);
@@ -237,6 +242,30 @@ public sealed partial class PlaybackModel
         // mustn't leave the clock stopped.
         _safetyPoll.Start();
         Finish(change);
+    }
+
+    /// <summary>Manual saves must use the corrected key and read its merged choices afresh.</summary>
+    bool TryApplyPendingDuration()
+    {
+        if (_pendingDurationCorrection is not { } pending) return true;
+        if (!ReferenceEquals(Track, pending.Track))
+        {
+            _pendingDurationCorrection = null;
+            return true; // never apply an old song's correction to the current song
+        }
+        if (!_provider.TryCorrectDuration(pending.Track, pending.Duration, _overrides, out var corrected))
+        {
+            SetSongSaveError("SongSettingsMoveFailed");
+            return false;
+        }
+        _pendingDurationCorrection = null;
+        _loading?.Cancel();
+        Track = corrected;
+        // The migration has committed even if a following manual edit cannot be saved.
+        ApplyOffset();
+        LoadLyrics(corrected, ignoreCache: false);
+        Changed?.Invoke(Change.Track);
+        return true;
     }
 
     void Finish(Change change)

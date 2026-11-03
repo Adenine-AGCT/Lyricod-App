@@ -60,6 +60,7 @@ public sealed partial class IslandWindow : Window
     readonly List<Rectangle> _bars = [];
     readonly List<Visual> _barVisuals = [];
     readonly AudioMeter _meter = new();
+    readonly OverlayContentGate _content = new();
     readonly Dictionary<(string Text, string Font, double Size, ushort Weight), double> _widths = [];
 
     List<LyricLine> _pieces = [];
@@ -118,7 +119,7 @@ public sealed partial class IslandWindow : Window
         _pointerTimer.Tick += (_, _) => { try { CheckPointer(); } catch (Exception e) { System.Diagnostics.Debug.WriteLine(e); } };
         _progressTimer = DispatcherQueue.CreateTimer();
         _progressTimer.Interval = TimeSpan.FromSeconds(0.5);
-        _progressTimer.Tick += (_, _) => { try { _progress.Update(); } catch (Exception e) { System.Diagnostics.Debug.WriteLine(e); } };
+        _progressTimer.Tick += (_, _) => { try { if (_shown && !_closed && _expanded) _progress.Update(); } catch (Exception e) { System.Diagnostics.Debug.WriteLine(e); } };
         _barTimer = DispatcherQueue.CreateTimer();
         _barTimer.Tick += (_, _) => { try { DrawBars(); } catch (Exception e) { System.Diagnostics.Debug.WriteLine(e); } };
         // Text hidden while the pill widens shows again by this at the latest.
@@ -127,7 +128,7 @@ public sealed partial class IslandWindow : Window
         _revealTimer.Interval = TimeSpan.FromSeconds(0.35);
         _revealTimer.Tick += (_, _) =>
         {
-            try { if (_waitingForWidth && !_closed) { _waitingForWidth = false; RevealText(); } }
+            try { if (_waitingForWidth && _shown && !_closed) { _waitingForWidth = false; RevealText(); } }
             catch (Exception e) { System.Diagnostics.Debug.WriteLine(e); }
         };
 
@@ -143,7 +144,7 @@ public sealed partial class IslandWindow : Window
                 if (_closed || !PausedLongEnough) return;
                 if (_hovered) { _pauseTimer.Start(); return; } // not from under the pointer
                 _pausedAway = true;
-                UpdateVisibility();
+                Refresh(OverlayContentChanges.None);
             }
             catch (Exception e) { System.Diagnostics.Debug.WriteLine(e); }
         };
@@ -187,20 +188,19 @@ public sealed partial class IslandWindow : Window
         ApplyMoveMode();
         ApplyLayout();
         Place();
-        _ = ApplyArtwork();
-        UpdateSong();
-        Render();
         UpdatePaused();
+        Refresh();
     }
 
     // ---- Model ----
 
     void OnFontChanged()
     {
+        if (_closed) return;
         try
         {
             _widths.Clear();
-            Render();
+            Refresh();
         }
         catch (Exception e) { System.Diagnostics.Debug.WriteLine("font refresh: " + e); }
     }
@@ -209,21 +209,37 @@ public sealed partial class IslandWindow : Window
     {
         if (_closed) return;
         bool track = change.HasFlag(PlaybackModel.Change.Track);
-        bool clock = change.HasFlag(PlaybackModel.Change.Clock);
-        if (track || change.HasFlag(PlaybackModel.Change.Session)) _progress.CancelInteraction();
+        if (_expanded && (track || change.HasFlag(PlaybackModel.Change.Session))) _progress.CancelInteraction();
         UpdatePaused();
-        if (track) UpdateSong();
-        if (change.HasFlag(PlaybackModel.Change.Artwork)) _ = ApplyArtwork();
-        if (track || change.HasFlag(PlaybackModel.Change.Lyrics) || change.HasFlag(PlaybackModel.Change.Line))
-            Render();
-        else if (clock)
-            ShowPiece();
-        if (clock)
+        var updates = OverlayContentChanges.None;
+        if (track) updates |= OverlayContentChanges.Song | OverlayContentChanges.Lyrics;
+        if (change.HasFlag(PlaybackModel.Change.Lyrics) || change.HasFlag(PlaybackModel.Change.Line)) updates |= OverlayContentChanges.Lyrics;
+        if (change.HasFlag(PlaybackModel.Change.Artwork)) updates |= OverlayContentChanges.Artwork;
+        if (change.HasFlag(PlaybackModel.Change.Clock)) updates |= OverlayContentChanges.Clock;
+        if (change.HasFlag(PlaybackModel.Change.Progress)) updates |= OverlayContentChanges.Progress;
+        Refresh(updates);
+    }
+
+    /// <summary>Hidden updates collapse into one current snapshot when the island is shown.</summary>
+    void Refresh(OverlayContentChanges changes = OverlayContentChanges.Lyrics)
+    {
+        if (_closed) return;
+        UpdateVisibility();
+        if (_closed) return;
+        var update = _content.Take(_shown, changes);
+        if (update == OverlayContentChanges.None) return;
+        if (update.HasFlag(OverlayContentChanges.Song)) UpdateSong();
+        if (update.HasFlag(OverlayContentChanges.Artwork)) _ = ApplyArtwork();
+        if (update.HasFlag(OverlayContentChanges.Lyrics)) Render();
+        else if (update.HasFlag(OverlayContentChanges.Clock)) ShowPiece();
+        if (_closed || !_shown) return;
+        if (update.HasFlag(OverlayContentChanges.Song) || update.HasFlag(OverlayContentChanges.Clock))
         {
             _transport.Update();
             UpdateBars();
+            UpdateProgress();
         }
-        if (track || clock || change.HasFlag(PlaybackModel.Change.Progress)) UpdateProgress();
+        else if (update.HasFlag(OverlayContentChanges.Progress)) UpdateProgress();
     }
 
     void UpdateProgress()
@@ -236,19 +252,21 @@ public sealed partial class IslandWindow : Window
 
     void OnSettingChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (_closed) return;
         switch (e.PropertyName)
         {
             case nameof(Settings.ShowIsland):
-                UpdateVisibility();
+                Refresh(OverlayContentChanges.None);
                 break;
             case nameof(Settings.IslandAlbumColour) or nameof(Settings.IslandColor):
                 ApplyColour();
                 break;
             case nameof(Settings.IslandSecondLine):
-                Render();
+                Refresh();
                 break;
             case nameof(Settings.IslandHideWhenPaused):
                 UpdatePaused();
+                Refresh(OverlayContentChanges.None);
                 break;
             case nameof(Settings.IslandHover):
                 SetHovered(false);
@@ -273,12 +291,11 @@ public sealed partial class IslandWindow : Window
             case nameof(Settings.IslandSize) or nameof(Settings.IslandMaxTextWidth):
                 ApplyLayout();
                 Place();
-                Render();
-                _ = ApplyArtwork();
+                Refresh(OverlayContentChanges.Lyrics | OverlayContentChanges.Artwork);
                 break;
             case nameof(Settings.IslandWeight):
                 _widths.Clear();
-                Render();
+                Refresh();
                 break;
             case nameof(Settings.IslandEffect):
                 _sweep.Effect = _settings.IslandEffect;
@@ -295,19 +312,17 @@ public sealed partial class IslandWindow : Window
         _lineShown = false;
         SongTitle.Text = _model.Track?.Title ?? "";
         SongArtist.Text = _model.Track?.Artist ?? "";
-        _transport.Update();
-        _progress.Update();
-        UpdateVisibility();
-        UpdateBars(); // another player may be playing now
     }
 
     async Task ApplyArtwork()
     {
+        if (_closed || !_shown) return;
         var bytes = _model.Artwork;
         double scale = LayoutScale;
         var small = await Images.FromBytes(bytes, (int)Math.Ceiling(44 * scale));
+        if (_closed || !_shown || !ReferenceEquals(bytes, _model.Artwork) || scale != LayoutScale) return;
         var big = await Images.FromBytes(bytes, (int)Math.Ceiling(68 * scale));
-        if (_closed || !ReferenceEquals(bytes, _model.Artwork) || scale != LayoutScale) return;
+        if (_closed || !_shown || !ReferenceEquals(bytes, _model.Artwork) || scale != LayoutScale) return;
         Art.Source = small;
         BigArt.Source = big;
         ApplyColour();

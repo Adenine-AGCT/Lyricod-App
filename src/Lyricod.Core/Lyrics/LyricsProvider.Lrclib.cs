@@ -38,38 +38,53 @@ public sealed partial class LyricsProvider
         }
         // The exact lookup needs the album too, which browsers often don't report: search, and
         // take the best match that has timed lyrics.
-        foreach (var c in search.Observe(await LrclibCandidates($"{track.Title} {track.Artist}", track, ct)))
+        // Keep this response's lyrics until selection finishes. A large item can bypass the cache,
+        // and concurrent searches can evict it, without changing the result of this lookup.
+        var results = await SearchLrclib($"{track.Title} {track.Artist}", track, ct);
+        foreach (var result in results) search.Observe(result.Candidate.Score);
+        foreach (var (c, raw) in results)
         {
             if (c.Score < (search.IsMusicPlayer ? 6 : LyricsSearch.ConfidentScore)) break;
             if (requireTitle && !c.TitleMatched) continue;
             if (!search.Accepts(c.Score, c.TitleMatched)) continue;
-            if (_lrclibSeen.TryGetValue(c.Id.Id, out var seen) && !string.IsNullOrEmpty(seen.Lrc)) return seen.Matched(c.Score, c.TitleMatched);
+            if (!string.IsNullOrEmpty(raw.Lrc)) return raw.Matched(c.Score, c.TitleMatched);
         }
         return null;
     }
 
     public async Task<RawLyrics?> FetchLrclib(string id, CancellationToken ct = default)
     {
-        if (_lrclibSeen.TryGetValue(id, out var seen)) return seen;
+        ct.ThrowIfCancellationRequested();
+        // RawLyrics is public and mutable. Never lend out the cache's weighed instance.
+        if (_lrclibSeen.TryGetValue(id, out var seen))
+            return new RawLyrics { Source = seen.Source, Lrc = seen.Lrc, Plain = seen.Plain, Ref = seen.Ref };
         return LrclibRaw(await GetJson(new HttpRequestMessage(HttpMethod.Get, "https://lrclib.net/api/get/" + Uri.EscapeDataString(id)), ct, require200: true));
     }
 
     /// <summary>LRCLIB search results scored against <paramref name="track"/>, best first. Records without lyrics are left out.</summary>
-    public async Task<List<LyricsCandidate>> LrclibCandidates(string query, Track track, CancellationToken ct = default)
+    public async Task<List<LyricsCandidate>> LrclibCandidates(string query, Track track, CancellationToken ct = default) =>
+        [.. (await SearchLrclib(query, track, ct)).Select(result => result.Candidate)];
+
+    async Task<List<(LyricsCandidate Candidate, RawLyrics Raw)>> SearchLrclib(string query, Track track, CancellationToken ct)
     {
         var res = await GetJson(new HttpRequestMessage(HttpMethod.Get, "https://lrclib.net/api/search?" + Query(("q", query))), ct, require200: true);
-        var list = new List<LyricsCandidate>();
+        var list = new List<(LyricsCandidate Candidate, RawLyrics Raw)>();
         foreach (var r in Arr(res).Take(20))
         {
+            ct.ThrowIfCancellationRequested();
             if (Long(Field(r, "id")) is not { } id || Str(Field(r, "trackName")) is not { } title) continue;
             if (string.IsNullOrEmpty(Str(Field(r, "syncedLyrics")) ?? Str(Field(r, "plainLyrics")))) continue;
             var key = id.ToString(CultureInfo.InvariantCulture);
-            _lrclibSeen[key] = LrclibRaw(r)!;
+            var reference = new LyricsRef(LyricsSource.Lrclib, key);
+            var raw = LrclibRaw(r)!;
+            raw.Ref = reference; // share the weighed key with both result views
+            _lrclibSeen.Set(key, raw, 2L * key.Length + 2L * (raw.Lrc?.Length ?? 0) + 2L * (raw.Plain?.Length ?? 0));
             var artist = Str(Field(r, "artistName")) ?? "";
             var duration = Num(Field(r, "duration")) ?? 0;
-            list.Add(new LyricsCandidate(new LyricsRef(LyricsSource.Lrclib, key), title, artist, Str(Field(r, "albumName")) ?? "", duration,
-                TrackMatcher.Score([title], [artist], duration, track, Str(Field(r, "albumName"))), TrackMatcher.TitleMatches([title], track)));
+            var candidate = new LyricsCandidate(reference, title, artist, Str(Field(r, "albumName")) ?? "", duration,
+                TrackMatcher.Score([title], [artist], duration, track, Str(Field(r, "albumName"))), TrackMatcher.TitleMatches([title], track));
+            list.Add((candidate, raw));
         }
-        return [.. list.OrderByDescending(c => c.Score)];
+        return [.. list.OrderByDescending(result => result.Candidate.Score)];
     }
 }

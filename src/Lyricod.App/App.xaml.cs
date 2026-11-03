@@ -81,8 +81,9 @@ public partial class App : Application
         _tray.IsVisible = true;
         _model.Changed += change =>
         {
-            if (change.HasFlag(PlaybackModel.Change.Track) && _tray != null)
-                _tray.Tooltip = _model.Track is { } t ? Trim($"Lyricod · {t.Title} — {t.Artist}", 127) : "Lyricod";
+            if ((change.HasFlag(PlaybackModel.Change.Track) || change.HasFlag(PlaybackModel.Change.Diagnostics)) && _tray != null)
+                _tray.Tooltip = _model.SongSaveError is { } error ? Trim($"Lyricod · {error}", 127)
+                    : _model.Track is { } t ? Trim($"Lyricod · {t.Title} — {t.Artist}", 127) : "Lyricod";
         };
 
         await _model.StartAsync();
