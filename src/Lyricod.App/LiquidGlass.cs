@@ -32,14 +32,17 @@ sealed class LiquidGlass : IDisposable
     readonly DispatcherQueue _ui;
     readonly Action _failed;
     readonly nint _window;
-    readonly CanvasDevice _device = CanvasDevice.GetSharedDevice();
-    readonly CompositionGraphicsDevice _graphics;
-    readonly CompositionDrawingSurface _surface;
-    readonly CompositionRoundedRectangleGeometry _shape;
-    readonly Transform2DEffect _behind = new();
-    readonly DisplacementMapEffect _bend = new() { XChannelSelect = EffectChannelSelect.Red, YChannelSelect = EffectChannelSelect.Green };
-    readonly GaussianBlurEffect _blur = new() { BorderMode = EffectBorderMode.Hard, Optimization = EffectOptimization.Speed };
-    readonly SaturationEffect _vivid = new() { Saturation = 1.2f };
+    CanvasDevice _device = null!; // shared; not owned here
+    CompositionGraphicsDevice _graphics = null!;
+    CompositionDrawingSurface _surface = null!;
+    CompositionRoundedRectangleGeometry _shape = null!;
+    CompositionSurfaceBrush _brush = null!;
+    CompositionGeometricClip _clip = null!;
+    SpriteVisual _visual = null!;
+    Transform2DEffect _behind = null!;
+    DisplacementMapEffect _bend = null!;
+    GaussianBlurEffect _blur = null!;
+    SaturationEffect _vivid = null!;
 
     GraphicsCaptureItem? _item;
     Direct3D11CaptureFramePool? _pool;
@@ -65,7 +68,7 @@ sealed class LiquidGlass : IDisposable
     public bool SessionExclusion { get; private set; }
 
     /// <summary>The island's background: put it behind the lyrics, sized to the island.</summary>
-    public SpriteVisual Visual { get; }
+    public SpriteVisual Visual => _visual;
 
     /// <summary>
     /// Keeps showing what was behind the island instead of capturing it afresh. While the island shows
@@ -88,16 +91,30 @@ sealed class LiquidGlass : IDisposable
         _ui = ui;
         _failed = failed;
         _window = window;
-        _graphics = CanvasComposition.CreateCompositionGraphicsDevice(compositor, _device);
-        _surface = _graphics.CreateDrawingSurface(new Windows.Foundation.Size(1, 1),
-            Microsoft.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized, Microsoft.Graphics.DirectX.DirectXAlphaMode.Premultiplied);
-        var brush = compositor.CreateSurfaceBrush(_surface);
-        brush.Stretch = CompositionStretch.Fill;
-        _shape = compositor.CreateRoundedRectangleGeometry();
-        Visual = compositor.CreateSpriteVisual();
-        Visual.Brush = brush;
-        // Smooth rounded corners, unlike a clipped window's.
-        Visual.Clip = compositor.CreateGeometricClip(_shape);
+        try
+        {
+            _device = CanvasDevice.GetSharedDevice();
+            _behind = new Transform2DEffect();
+            _bend = new DisplacementMapEffect { XChannelSelect = EffectChannelSelect.Red, YChannelSelect = EffectChannelSelect.Green };
+            _blur = new GaussianBlurEffect { BorderMode = EffectBorderMode.Hard, Optimization = EffectOptimization.Speed };
+            _vivid = new SaturationEffect { Saturation = 1.2f };
+            _graphics = CanvasComposition.CreateCompositionGraphicsDevice(compositor, _device);
+            _surface = _graphics.CreateDrawingSurface(new Windows.Foundation.Size(1, 1),
+                Microsoft.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized, Microsoft.Graphics.DirectX.DirectXAlphaMode.Premultiplied);
+            _brush = compositor.CreateSurfaceBrush(_surface);
+            _brush.Stretch = CompositionStretch.Fill;
+            _shape = compositor.CreateRoundedRectangleGeometry();
+            _visual = compositor.CreateSpriteVisual();
+            _visual.Brush = _brush;
+            // Smooth rounded corners, unlike a clipped window's.
+            _clip = compositor.CreateGeometricClip(_shape);
+            _visual.Clip = _clip;
+        }
+        catch
+        {
+            DisposeDrawingResources();
+            throw;
+        }
     }
 
     /// <summary>
@@ -303,10 +320,31 @@ sealed class LiquidGlass : IDisposable
     public void Dispose()
     {
         Stop();
-        _lens?.Dispose();
-        _light?.Dispose();
-        _surface.Dispose();
-        _graphics.Dispose();
+        DisposeDrawingResources();
+    }
+
+    void DisposeDrawingResources()
+    {
+        DisposeOwned(ref _lens);
+        DisposeOwned(ref _light);
+        DisposeOwned(ref _visual);
+        DisposeOwned(ref _clip);
+        DisposeOwned(ref _brush);
+        DisposeOwned(ref _shape);
+        DisposeOwned(ref _vivid);
+        DisposeOwned(ref _blur);
+        DisposeOwned(ref _bend);
+        DisposeOwned(ref _behind);
+        DisposeOwned(ref _surface);
+        DisposeOwned(ref _graphics);
+    }
+
+    static void DisposeOwned<T>(ref T resource) where T : class, IDisposable
+    {
+        var owned = resource;
+        resource = null!;
+        try { owned?.Dispose(); }
+        catch (Exception) { /* keep releasing the other resources */ }
     }
 
     [ComImport, Guid("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

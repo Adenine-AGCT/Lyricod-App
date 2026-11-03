@@ -30,23 +30,31 @@ public sealed partial class IslandWindow
     /// <summary>Starts, follows or stops the liquid glass; returns whether it's showing.</summary>
     bool ApplyLiquid()
     {
-        bool on = WantsLiquid && _shown && !(_hovered && _hoverAction == IslandHover.Hide) && _liquid?.Failed != true;
-        if (!on)
+        try
+        {
+            bool on = WantsLiquid && _shown && !(_hovered && _hoverAction == IslandHover.Hide) && _liquid?.Failed != true;
+            if (!on)
+            {
+                StopLiquid();
+                return false;
+            }
+            if (_liquid == null)
+            {
+                // If it fails later (the graphics card reset, the screen went away), fall back to clear glass.
+                _liquid = new LiquidGlass(ElementCompositionPreview.GetElementVisual(LiquidHost).Compositor, DispatcherQueue, _overlay.Handle,
+                    () => DispatcherQueue.TryEnqueue(() => { if (_liquid?.Failed == true) ApplyTheme(); }));
+                ElementCompositionPreview.SetElementChildVisual(LiquidHost, _liquid.Visual);
+            }
+            UpdateLiquid();
+            if (!_liquid.Failed) return true;
+            StopLiquid();
+            return false;
+        }
+        catch (Exception)
         {
             StopLiquid();
             return false;
         }
-        if (_liquid == null)
-        {
-            // If it fails later (the graphics card reset, the screen went away), fall back to clear glass.
-            _liquid = new LiquidGlass(ElementCompositionPreview.GetElementVisual(LiquidHost).Compositor, DispatcherQueue, _overlay.Handle,
-                () => DispatcherQueue.TryEnqueue(() => { if (_liquid?.Failed == true) ApplyTheme(); }));
-            ElementCompositionPreview.SetElementChildVisual(LiquidHost, _liquid.Visual);
-        }
-        UpdateLiquid();
-        if (!_liquid.Failed) return true;
-        StopLiquid();
-        return false;
     }
 
     /// <summary>
@@ -78,11 +86,12 @@ public sealed partial class IslandWindow
 
     void StopLiquid()
     {
-        _screenshotTimer?.Stop();
-        if (_liquid == null) return;
-        ElementCompositionPreview.SetElementChildVisual(LiquidHost, null);
-        _liquid.Dispose();
+        try { _screenshotTimer?.Stop(); } catch (Exception) { }
+        var liquid = _liquid;
         _liquid = null;
+        if (liquid == null) return;
+        try { ElementCompositionPreview.SetElementChildVisual(LiquidHost, null); } catch (Exception) { }
+        try { liquid.Dispose(); } catch (Exception) { }
     }
 
     /// <summary>Keeps the liquid glass on what's behind the island as it moves, grows and changes look.</summary>
