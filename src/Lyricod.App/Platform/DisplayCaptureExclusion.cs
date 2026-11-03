@@ -8,10 +8,27 @@ internal static class DisplayCaptureExclusion
 {
     // Windows.Graphics.Capture.IDisplayGraphicsCaptureSession (UniversalApiContract 19).
     internal static readonly Guid SessionId = new("BB91F61B-218A-587D-8580-2701A74C0525");
+    // Windows.Graphics.Capture.IDirect3D11CaptureFrame3 (UniversalApiContract 19): ConfigurationIteration.
+    internal static readonly Guid FrameId = new("71616DC8-FEA5-5741-A3D8-591ACC39A9EE");
 
-    public static unsafe bool TryExcludeWindow(nint session, nint window, int windowsBuild)
+    /// <summary>Whether this Windows can leave a window out of just this display capture session.</summary>
+    public static bool IsAvailable(nint session, int windowsBuild)
     {
         // Updated 26100+ builds can expose this; the build number alone doesn't guarantee it.
+        if (windowsBuild < 26100 || session == 0) return false;
+        if (Marshal.QueryInterface(session, in SessionId, out nint display) < 0) return false;
+        Marshal.Release(display);
+        return true;
+    }
+
+    /// <summary>
+    /// Leaves <paramref name="window"/> out of the session's capture. <paramref name="iteration"/> is the
+    /// capture configuration that does: frames say which configuration they were made with (see
+    /// <see cref="FrameIteration"/>).
+    /// </summary>
+    public static unsafe bool TryExcludeWindow(nint session, nint window, int windowsBuild, out ulong iteration)
+    {
+        iteration = 0;
         if (windowsBuild < 26100 || session == 0 || window == 0) return false;
         if (Marshal.QueryInterface(session, in SessionId, out nint display) < 0) return false;
         nint windows = 0;
@@ -20,8 +37,10 @@ internal static class DisplayCaptureExclusion
             windows = (nint)ComInterfaceMarshaller<ICaptureWindowIds>.ConvertToUnmanaged(new CaptureWindowIds(window));
             // IUnknown (3), IInspectable (3), then SetWindowExclusionList(IIterable<WindowId>, out UInt64).
             var set = (delegate* unmanaged[Stdcall]<nint, nint, ulong*, int>)(*(void***)display)[6];
-            ulong iteration;
-            return set(display, windows, &iteration) >= 0;
+            ulong result;
+            if (set(display, windows, &result) < 0) return false;
+            iteration = result;
+            return true;
         }
         catch (Exception e)
         {
@@ -33,6 +52,21 @@ internal static class DisplayCaptureExclusion
             if (windows != 0) ComInterfaceMarshaller<ICaptureWindowIds>.Free((void*)windows);
             Marshal.Release(display);
         }
+    }
+
+    /// <summary>The capture configuration a frame was made with, or null where Windows doesn't say.</summary>
+    public static unsafe ulong? FrameIteration(nint frame)
+    {
+        if (frame == 0 || Marshal.QueryInterface(frame, in FrameId, out nint frame3) < 0) return null;
+        try
+        {
+            // IUnknown (3), IInspectable (3), then get_ConfigurationIteration(out UInt64).
+            var get = (delegate* unmanaged[Stdcall]<nint, ulong*, int>)(*(void***)frame3)[6];
+            ulong iteration;
+            return get(frame3, &iteration) >= 0 ? iteration : null;
+        }
+        catch (Exception) { return null; }
+        finally { Marshal.Release(frame3); }
     }
 
     internal static int GetIids(Guid id, out uint count, out nint ids)

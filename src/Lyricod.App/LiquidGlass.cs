@@ -17,9 +17,8 @@ namespace Lyricod;
 /// Lyricod Glass's liquid effect: what's behind the island, captured from the screen
 /// and drawn as its background, lightly blurred and bent at the edges like the rim of a lens, with
 /// the light its edge catches (the 3D effect) drawn to follow the same curve. The
-/// island is excluded from its own capture session on supported Windows builds, once it's capturing
-/// (out of every capture until then); older builds need global capture exclusion to avoid feedback.
-/// Windows 11 only: Windows 10
+/// island is excluded from its own capture session on supported Windows builds, so other recorders see
+/// it throughout; older builds need global capture exclusion to avoid feedback. Windows 11 only: Windows 10
 /// outlines the whole screen in yellow while anything captures it.
 /// </summary>
 sealed class LiquidGlass : IDisposable
@@ -59,10 +58,15 @@ sealed class LiquidGlass : IDisposable
     (int Width, int Height, float Radius, bool SquareTop, float Rim) _lightFor;
     Look? _look;
     int _pending, _generation, _startGeneration;
-    /// <summary>The steps after a session is set up, a moment apart (see <see cref="Start"/>).</summary>
+    /// <summary>On older Windows, starts capturing a moment after the island goes out of every capture (see <see cref="Start"/>).</summary>
     readonly DispatcherQueueTimer _startDelay;
-    /// <summary>The session is capturing and leaves the island out itself; next, other recorders see it again.</summary>
-    bool _sessionExcluding;
+    /// <summary>With session exclusion: the capture configuration that leaves the island out. Frames made with earlier ones aren't used.</summary>
+    ulong _excludedFrom;
+    /// <summary>When session exclusion was set (<see cref="Environment.TickCount64"/>), for frames that don't say their configuration.</summary>
+    long _excludedAt;
+    /// <summary>Diagnostics: frames left unused while the exclusion took effect, and the newest frame's configuration.</summary>
+    int _earlyFrames;
+    ulong? _newestIteration;
     volatile bool _disposed;
     bool _ownsAffinity;
     Windows.Foundation.TypedEventHandler<GraphicsCaptureItem, object>? _itemClosed;
@@ -106,21 +110,7 @@ sealed class LiquidGlass : IDisposable
         _startDelay.Tick += (_, _) =>
         {
             int generation = _startGeneration;
-            try
-            {
-                if (!IsCurrent(generation) || _session == null) return;
-                if (!_sessionExcluding)
-                {
-                    _session.StartCapture();
-                    _sessionExcluding = DisplayCaptureExclusion.TryExcludeWindow(((IWinRTObject)_session).NativeObject.ThisPtr,
-                        _window, Environment.OSVersion.Version.Build);
-                    if (_sessionExcluding) _startDelay.Start();
-                    return;
-                }
-                SessionExclusion = true;
-                Frozen = false;
-                SetCaptureAffinity(Win32.WDA_NONE);
-            }
+            try { if (IsCurrent(generation)) _session?.StartCapture(); }
             catch (Exception e) { try { if (IsCurrent(generation)) Fail(e); } catch (Exception) { } }
         };
         try
@@ -213,14 +203,32 @@ sealed class LiquidGlass : IDisposable
         _session = _pool.CreateCaptureSession(_item);
         _session.IsCursorCaptureEnabled = false;
         Borderless(_session);
-        // Windows can ignore a session's own exclusion list set before it starts capturing: the glass then
-        // captures itself over and over, into solid colour. So the island goes out of every capture first. Windows takes a moment to do that, and capturing at
-        // once could make the first frame show the island inside its own glass (on a still screen that
-        // frame stays: no new ones come until something changes), so capturing starts a moment later.
-        // Where Windows has session exclusion, the session then leaves the island out itself, and a
-        // moment after that, other recorders see the island again (it's out of them for under a second).
-        SetCaptureAffinity(Win32.WDA_EXCLUDEFROMCAPTURE);
         _startGeneration = generation;
+        nint native = ((IWinRTObject)_session).NativeObject.ThisPtr;
+        int build = Environment.OSVersion.Version.Build;
+        if (DisplayCaptureExclusion.IsAvailable(native, build))
+        {
+            // Windows can ignore a session's exclusion list set before it starts capturing (the glass then
+            // captures itself over and over, into solid colour), so it's set once capturing has started.
+            // Each frame says which capture configuration it was made with: until frames come from the
+            // one that leaves the island out, they're left unused. Other recorders see the island throughout.
+            _session.StartCapture();
+            if (DisplayCaptureExclusion.TryExcludeWindow(native, _window, build, out ulong iteration))
+            {
+                _excludedFrom = iteration;
+                _excludedAt = Environment.TickCount64;
+                SessionExclusion = true;
+                return;
+            }
+            // Capturing already: leave the island out of every capture, and frames unused until it's out.
+            SetCaptureAffinity(Win32.WDA_EXCLUDEFROMCAPTURE);
+            _skipUntil = Environment.TickCount64 + 400;
+            return;
+        }
+        // Older Windows: the island goes out of every capture. Windows takes a moment to do that, and
+        // capturing at once could make the first frame show the island inside its own glass (on a still
+        // screen that frame stays: no new ones come until something changes), so capturing starts a moment later.
+        SetCaptureAffinity(Win32.WDA_EXCLUDEFROMCAPTURE);
         _startDelay.Stop();
         _startDelay.Start();
     }
@@ -297,6 +305,7 @@ sealed class LiquidGlass : IDisposable
                 return;
             }
             if (Frozen || Environment.TickCount64 < _skipUntil) return;
+            if (SessionExclusion && !LeavesIslandOut(newest)) return;
             RetireFrame();
             _screen = CanvasBitmap.CreateFromDirect3D11Surface(_device, newest.Surface);
             _frame = newest;
@@ -306,6 +315,23 @@ sealed class LiquidGlass : IDisposable
         catch (Exception e) { Fail(e); }
         finally { DisposeOwned(ref newest); }
     }
+
+    /// <summary>
+    /// Whether a frame was made once the session's exclusion took effect: its capture configuration says
+    /// so. Where frames don't say, the first moment after setting it is left unused instead.
+    /// </summary>
+    bool LeavesIslandOut(Direct3D11CaptureFrame frame)
+    {
+        _newestIteration = DisplayCaptureExclusion.FrameIteration(((IWinRTObject)frame).NativeObject.ThisPtr);
+        bool after = _newestIteration is { } iteration ? iteration >= _excludedFrom : Environment.TickCount64 - _excludedAt >= 300;
+        if (!after) _earlyFrames++;
+        return after;
+    }
+
+    /// <summary>Diagnostics: how the island is left out of the glass's capture.</summary>
+    internal string ExclusionDetail => SessionExclusion
+        ? $"from capture configuration {_excludedFrom}; newest frame's {(_newestIteration is { } i ? i.ToString() : "unknown")}; {_earlyFrames} earlier frame(s) unused"
+        : "";
 
     /// <summary>The part of the screen behind the island: bent at the edges, blurred, a little more vivid, tinted, lit.</summary>
     void Draw(CanvasBitmap screen, Look look)
@@ -375,8 +401,10 @@ sealed class LiquidGlass : IDisposable
         Interlocked.Increment(ref _generation);
         Interlocked.Exchange(ref _pending, 0);
         _monitor = 0;
-        _sessionExcluding = false;
         SessionExclusion = false;
+        _excludedFrom = 0;
+        _earlyFrames = 0;
+        _newestIteration = null;
         Frozen = false; // the old session's screenshot timer is retired too
         var item = _item;
         var closed = _itemClosed;

@@ -49,6 +49,8 @@ public sealed partial class PlaybackModel
 
     /// <summary>Debug: LYRICOD_STATE_FILE=path writes the playhead and line for checks from outside.</summary>
     static readonly string? DebugStatePath = Environment.GetEnvironmentVariable("LYRICOD_STATE_FILE");
+    /// <summary>Debug: the glass's capture status, for the state file.</summary>
+    internal static Func<string>? DebugGlass;
 
     public string DiagnosticsText => Diagnostics.Text(
         UpdateChecker.TestBuild is { } build ? $"{UpdateChecker.Version} (test build {build})"
@@ -75,6 +77,7 @@ public sealed partial class PlaybackModel
                 musicPlayer = IsMusicPlayer, song = IsSong, bestMatchScore = BestMatchScore,
                 automaticLookupAllowed = AutomaticLookupAllowed,
                 artwork = Artwork == null ? null : $"{Artwork.Length} bytes, {(_artworkWhole ? "whole" : "cut short")}",
+                glass = DebugGlass?.Invoke(),
             }));
         }
         catch (IOException) { }

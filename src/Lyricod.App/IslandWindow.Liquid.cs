@@ -22,7 +22,7 @@ public sealed partial class IslandWindow
     DispatcherQueueTimer? _screenshotTimer;
 
     internal string LiquidCaptureStatus => _liquid == null ? "inactive" : _liquid.Failed ? "failed"
-        : _liquid.SessionExclusion ? "session-only exclusion (live, recordable)"
+        : _liquid.SessionExclusion ? "session-only exclusion (live, recordable), " + _liquid.ExclusionDetail
         : _liquid.Frozen ? "global exclusion fallback (screenshot pause)" : "global exclusion fallback";
 
     bool WantsLiquid => Glass && _settings.GlassEffect == GlassEffect.Liquid && LiquidGlass.IsSupported && !Movable;
