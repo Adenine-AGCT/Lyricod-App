@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Security.Cryptography;
 using Lyricod.Core;
 using Microsoft.Win32;
 
@@ -89,22 +88,24 @@ public static class NeteaseSetup
         try
         {
             progress.Report(NeteaseStage.Downloading);
-            string? helper = await DownloadHelperAsync(work.FullName);
-            if (helper == null) return (NeteaseResult.CouldntDownload, null);
-
-            progress.Report(NeteaseStage.WaitingForPermission);
-            bool wasOpen = IsOpen();
+            bool wasOpen;
             string result = Path.Combine(work.FullName, "result.json");
-            var start = new ProcessStartInfo(helper)
-            {
-                UseShellExecute = true,
-                Verb = "runas",
-                Arguments = NeteaseSync.Arguments(remove, netease.Folder, DataFolder(), result),
-                WorkingDirectory = work.FullName,
-            };
             Process? process;
-            try { process = Process.Start(start); }
-            catch (Win32Exception e) when (e.NativeErrorCode == 1223) { return (NeteaseResult.Cancelled, null); } // ERROR_CANCELLED: said no
+            using (var helper = await DownloadHelperAsync(work.FullName))
+            {
+                if (helper == null) return (NeteaseResult.CouldntDownload, null);
+                progress.Report(NeteaseStage.WaitingForPermission);
+                wasOpen = IsOpen();
+                var start = new ProcessStartInfo(helper.Name)
+                {
+                    UseShellExecute = true,
+                    Verb = "runas",
+                    Arguments = NeteaseSync.Arguments(remove, netease.Folder, DataFolder(), result),
+                    WorkingDirectory = work.FullName,
+                };
+                try { process = Process.Start(start); }
+                catch (Win32Exception e) when (e.NativeErrorCode == 1223) { return (NeteaseResult.Cancelled, null); } // ERROR_CANCELLED: said no
+            } // keep the verified file locked until the elevated launch returns
             if (process == null) return (NeteaseResult.Failed, "The helper didn't start.");
             int exitCode;
             using (process)
@@ -136,8 +137,8 @@ public static class NeteaseSetup
         return processes.Length > 0;
     }
 
-    /// <summary>The helper from its latest release, checked against its SHA-256; null when it can't be had or doesn't match.</summary>
-    static async Task<string?> DownloadHelperAsync(string folder)
+    /// <summary>The pinned helper, verified and held against writes and deletion until it starts.</summary>
+    static async Task<FileStream?> DownloadHelperAsync(string folder)
     {
         try
         {
@@ -158,13 +159,7 @@ public static class NeteaseSetup
                 await using var file = File.Create(path);
                 await body.CopyToAsync(file);
             }
-            await using (var file = File.OpenRead(path))
-            {
-                if (file.Length != helper.Size) return null;
-                string hash = Convert.ToHexString(await SHA256.HashDataAsync(file));
-                if (!hash.Equals(helper.Sha256, StringComparison.OrdinalIgnoreCase)) return null;
-            }
-            return path;
+            return await NeteaseSync.OpenVerifiedHelperAsync(path, helper.Size, helper.Sha256);
         }
         catch (Exception) { return null; } // offline, GitHub unreachable, or a cut-off download
     }

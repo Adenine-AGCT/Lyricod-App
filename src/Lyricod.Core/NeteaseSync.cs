@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace Lyricod.Core;
@@ -29,6 +30,23 @@ public static class NeteaseSync
     public const string HelperEndpoint = "https://api.github.com/repos/" + HelperRepository + "/releases/tags/" + HelperVersion;
     public const string HelperName = "Lyricod-CM-Helper.exe";
     public const string HelperPage = "https://github.com/" + HelperRepository;
+
+    /// <summary>Verifies the helper without releasing its read-only lock; the caller owns the returned handle.</summary>
+    public static async Task<FileStream?> OpenVerifiedHelperAsync(string path, long size, string sha256)
+    {
+        FileStream? file = null;
+        try
+        {
+            file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (file.Length != size) return null;
+            string hash = Convert.ToHexString(await SHA256.HashDataAsync(file));
+            if (!hash.Equals(sha256, StringComparison.OrdinalIgnoreCase)) return null;
+            var verified = file;
+            file = null; // the caller keeps it open through Process.Start
+            return verified;
+        }
+        finally { file?.Dispose(); }
+    }
 
     /// <summary>The first installation whose executable can be read, in discovery order.</summary>
     public static T? FindInstallation<T>(IEnumerable<Func<string?>> candidates, Func<string, T?> read) where T : class
