@@ -81,11 +81,15 @@ public sealed partial class IslandWindow
 
     void OnPillPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (!Movable) return;
-        // Windows moves the window as if its title bar were dragged, and returns once the button is let go.
-        Win32.ReleaseCapture();
-        Win32.SendMessage(_overlay.Handle, Win32.WM_NCLBUTTONDOWN, Win32.HTCAPTION, 0);
-        if (!_closed) SaveSpot();
+        try
+        {
+            if (!Movable) return;
+            // Windows moves the window as if its title bar were dragged, and returns once the button is let go.
+            Win32.ReleaseCapture();
+            Win32.SendMessage(_overlay.Handle, Win32.WM_NCLBUTTONDOWN, Win32.HTCAPTION, 0);
+            if (!_closed) SaveSpot();
+        }
+        catch (Exception) { /* the screen or window went away */ }
     }
 
     /// <summary>Remembers where the pill was dropped, then places it from there.</summary>

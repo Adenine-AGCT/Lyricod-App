@@ -42,7 +42,18 @@ public sealed partial class IslandWindow
             {
                 // If it fails later (the graphics card reset, the screen went away), fall back to clear glass.
                 _liquid = new LiquidGlass(ElementCompositionPreview.GetElementVisual(LiquidHost).Compositor, DispatcherQueue, _overlay.Handle,
-                    () => DispatcherQueue.TryEnqueue(() => { if (_liquid?.Failed == true) ApplyTheme(); }));
+                    () =>
+                    {
+                        try
+                        {
+                            DispatcherQueue.TryEnqueue(() =>
+                            {
+                                try { if (!_closed && _liquid?.Failed == true) ApplyTheme(); }
+                                catch (Exception) { StopLiquid(); }
+                            });
+                        }
+                        catch (Exception) { StopLiquid(); }
+                    });
                 ElementCompositionPreview.SetElementChildVisual(LiquidHost, _liquid.Visual);
             }
             UpdateLiquid();
@@ -64,24 +75,35 @@ public sealed partial class IslandWindow
     /// </summary>
     public void ShowInScreenshots()
     {
-        if (_liquid?.ShowInScreenshots() != true) return;
-        if (_screenshotTimer == null)
+        try
         {
-            _screenshotTimer = DispatcherQueue.CreateTimer();
-            _screenshotTimer.Interval = TimeSpan.FromSeconds(ScreenshotSeconds);
-            _screenshotTimer.IsRepeating = false;
-            _screenshotTimer.Tick += (_, _) => EndScreenshot();
+            if (_liquid?.ShowInScreenshots() != true) return;
+            if (_screenshotTimer == null)
+            {
+                _screenshotTimer = DispatcherQueue.CreateTimer();
+                _screenshotTimer.Interval = TimeSpan.FromSeconds(ScreenshotSeconds);
+                _screenshotTimer.IsRepeating = false;
+                _screenshotTimer.Tick += (_, _) =>
+                {
+                    try { EndScreenshot(); } catch (Exception) { StopLiquid(); }
+                };
+            }
+            _screenshotTimer.Stop();
+            _screenshotTimer.Start();
         }
-        _screenshotTimer.Stop();
-        _screenshotTimer.Start();
+        catch (Exception e) { _liquid?.Fail(e); }
     }
 
     /// <summary>Hides the island from capture again, then lets the glass follow what's behind it.</summary>
     void EndScreenshot()
     {
-        _screenshotTimer?.Stop();
-        if (_liquid == null) return;
-        _liquid.EndScreenshot();
+        try
+        {
+            _screenshotTimer?.Stop();
+            if (_liquid == null) return;
+            _liquid.EndScreenshot();
+        }
+        catch (Exception e) { _liquid?.Fail(e); }
     }
 
     void StopLiquid()
@@ -97,14 +119,18 @@ public sealed partial class IslandWindow
     /// <summary>Keeps the liquid glass on what's behind the island as it moves, grows and changes look.</summary>
     void UpdateLiquid()
     {
-        if (_liquid == null) return;
-        var (left, top, width, height) = PillBounds();
-        if (width <= 0 || height <= 0) return;
-        var display = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest);
-        var screen = display.OuterBounds;
-        _liquid.Update(Microsoft.UI.Win32Interop.GetMonitorFromDisplayId(display.DisplayId), new PointInt32(screen.X, screen.Y),
-            new RectInt32((int)Math.Round(left), (int)Math.Round(top), (int)Math.Round(width), (int)Math.Round(height)),
-            new Vector2((float)Pill.ActualWidth, (float)Pill.ActualHeight), (float)Pill.CornerRadius.BottomLeft, !Floating,
-            blur: _settings.LiquidBlur / 100f * 16, refraction: _settings.LiquidRefraction / 100f * 14, GlassTintColour(), shine: GlassLit);
+        try
+        {
+            if (_liquid == null) return;
+            var (left, top, width, height) = PillBounds();
+            if (width <= 0 || height <= 0) return;
+            var display = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest);
+            var screen = display.OuterBounds;
+            _liquid.Update(Microsoft.UI.Win32Interop.GetMonitorFromDisplayId(display.DisplayId), new PointInt32(screen.X, screen.Y),
+                new RectInt32((int)Math.Round(left), (int)Math.Round(top), (int)Math.Round(width), (int)Math.Round(height)),
+                new Vector2((float)Pill.ActualWidth, (float)Pill.ActualHeight), (float)Pill.CornerRadius.BottomLeft, !Floating,
+                blur: _settings.LiquidBlur / 100f * 16, refraction: _settings.LiquidRefraction / 100f * 14, GlassTintColour(), shine: GlassLit);
+        }
+        catch (Exception e) { _liquid?.Fail(e); }
     }
 }

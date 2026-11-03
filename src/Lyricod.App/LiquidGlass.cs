@@ -127,16 +127,16 @@ sealed class LiquidGlass : IDisposable
         float blur, float refraction, Windows.UI.Color tint, bool shine)
     {
         if (Failed) return;
-        Visual.Size = size;
-        // The default island's top is the screen's edge: round only the bottom corners.
-        _shape.Offset = new Vector2(0, squareTop ? -radius : 0);
-        _shape.Size = new Vector2(size.X, size.Y + (squareTop ? radius : 0));
-        _shape.CornerRadius = new Vector2(radius, radius);
-        float scale = size.X > 0 ? pill.Width / size.X : 1;
-        _look = new Look(new RectInt32(pill.X - origin.X, pill.Y - origin.Y, pill.Width, pill.Height), radius * scale, squareTop,
-            blur * scale, refraction * scale, tint, shine ? 1.5f * scale : 0);
         try
         {
+            Visual.Size = size;
+            // The default island's top is the screen's edge: round only the bottom corners.
+            _shape.Offset = new Vector2(0, squareTop ? -radius : 0);
+            _shape.Size = new Vector2(size.X, size.Y + (squareTop ? radius : 0));
+            _shape.CornerRadius = new Vector2(radius, radius);
+            float scale = size.X > 0 ? pill.Width / size.X : 1;
+            _look = new Look(new RectInt32(pill.X - origin.X, pill.Y - origin.Y, pill.Width, pill.Height), radius * scale, squareTop,
+                blur * scale, refraction * scale, tint, shine ? 1.5f * scale : 0);
             if (monitor != _monitor) Start(monitor);
             else if (_screen != null) Draw(_screen, _look);
         }
@@ -148,7 +148,11 @@ sealed class LiquidGlass : IDisposable
         Stop();
         _monitor = monitor;
         _item = ForMonitor(monitor);
-        _item.Closed += (_, _) => _ui.TryEnqueue(() => Fail(null)); // the screen was unplugged
+        _item.Closed += (_, _) =>
+        {
+            try { _ui.TryEnqueue(() => { try { Fail(null); } catch (Exception) { } }); }
+            catch (Exception) { }
+        }; // the screen was unplugged
         _poolSize = _item.Size;
         _pool = Direct3D11CaptureFramePool.CreateFreeThreaded(_device, Windows.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized, 3, _poolSize);
         _pool.FrameArrived += OnFrameArrived;
@@ -200,7 +204,12 @@ sealed class LiquidGlass : IDisposable
     /// <summary>Frames arrive on a capture thread; the newest is drawn on the UI thread.</summary>
     void OnFrameArrived(Direct3D11CaptureFramePool pool, object args)
     {
-        if (Interlocked.Exchange(ref _pending, 1) == 0) _ui.TryEnqueue(DrawNewest);
+        try
+        {
+            if (Interlocked.Exchange(ref _pending, 1) == 0 && !_ui.TryEnqueue(DrawNewest))
+                Volatile.Write(ref _pending, 0);
+        }
+        catch (Exception) { Volatile.Write(ref _pending, 0); }
     }
 
     void DrawNewest()
@@ -271,7 +280,7 @@ sealed class LiquidGlass : IDisposable
     CanvasBitmap Lens(int width, int height, float radius, bool squareTop)
     {
         if (_lens != null && _lensFor == (width, height, radius, squareTop)) return _lens;
-        _lens?.Dispose();
+        DisposeOwned(ref _lens);
         _lens = CanvasBitmap.CreateFromBytes(_device, LiquidLens.Map(width, height, radius, squareTop), width, height,
             Windows.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized);
         _lensFor = (width, height, radius, squareTop);
@@ -282,51 +291,54 @@ sealed class LiquidGlass : IDisposable
     CanvasBitmap Light(int width, int height, float radius, bool squareTop, float rim)
     {
         if (_light != null && _lightFor == (width, height, radius, squareTop, rim)) return _light;
-        _light?.Dispose();
+        DisposeOwned(ref _light);
         _light = CanvasBitmap.CreateFromBytes(_device, LiquidLens.Light(width, height, radius, squareTop, rim), width, height,
             Windows.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized);
         _lightFor = (width, height, radius, squareTop, rim);
         return _light;
     }
 
-    void Fail(Exception? e)
+    internal void Fail(Exception? e)
     {
-        if (e != null) System.Diagnostics.Debug.WriteLine("liquid glass: " + e);
+        if (Failed) return;
         Failed = true;
-        Stop();
-        _failed();
+        try { if (e != null) System.Diagnostics.Debug.WriteLine("liquid glass: " + e); } catch (Exception) { }
+        try { Stop(); } catch (Exception) { }
+        try { _failed(); } catch (Exception) { }
     }
 
     void Stop()
     {
-        _session?.Dispose();
-        _session = null;
-        SessionExclusion = false;
-        if (_pool != null)
-        {
-            _pool.FrameArrived -= OnFrameArrived;
-            _pool.Dispose();
-            _pool = null;
-        }
-        _screen?.Dispose();
-        _screen = null;
-        _frame?.Dispose();
-        _frame = null;
-        _item = null;
         _monitor = 0;
-        Win32.SetWindowDisplayAffinity(_window, Win32.WDA_NONE);
+        SessionExclusion = false;
+        DisposeOwned(ref _session);
+        var pool = _pool;
+        _pool = null;
+        if (pool != null)
+        {
+            try { pool.FrameArrived -= OnFrameArrived; } catch (Exception) { }
+            DisposeOwned(ref pool);
+        }
+        RetireFrame();
+        _item = null;
+        try { Win32.SetWindowDisplayAffinity(_window, Win32.WDA_NONE); } catch (Exception) { }
+    }
+
+    void RetireFrame()
+    {
+        try { _behind.Source = null; } catch (Exception) { }
+        DisposeOwned(ref _screen);
+        DisposeOwned(ref _frame);
     }
 
     public void Dispose()
     {
-        Stop();
+        try { Stop(); } catch (Exception) { }
         DisposeDrawingResources();
     }
 
     void DisposeDrawingResources()
     {
-        DisposeOwned(ref _lens);
-        DisposeOwned(ref _light);
         DisposeOwned(ref _visual);
         DisposeOwned(ref _clip);
         DisposeOwned(ref _brush);
@@ -335,6 +347,8 @@ sealed class LiquidGlass : IDisposable
         DisposeOwned(ref _blur);
         DisposeOwned(ref _bend);
         DisposeOwned(ref _behind);
+        DisposeOwned(ref _lens);
+        DisposeOwned(ref _light);
         DisposeOwned(ref _surface);
         DisposeOwned(ref _graphics);
     }

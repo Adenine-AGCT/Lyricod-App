@@ -222,58 +222,62 @@ public sealed partial class IslandWindow : Window
 
     void OnSettingChanged(object? sender, PropertyChangedEventArgs e)
     {
-        switch (e.PropertyName)
+        try
         {
-            case nameof(Settings.ShowIsland):
-                UpdateVisibility();
-                break;
-            case nameof(Settings.IslandAlbumColour) or nameof(Settings.IslandColor):
-                ApplyColour();
-                break;
-            case nameof(Settings.IslandSecondLine):
-                Render();
-                break;
-            case nameof(Settings.IslandHideWhenPaused):
-                UpdatePaused();
-                break;
-            case nameof(Settings.IslandHover):
-                SetHovered(false);
-                Pill.Opacity = ShadowHost.Opacity = 1;
-                break;
-            case nameof(Settings.IslandStyle):
-                ApplyMoveMode();
-                ApplyCorners();
-                Place();
-                break;
-            case nameof(Settings.IslandLocked):
-                ApplyMoveMode();
-                break;
-            case nameof(Settings.IslandTheme) or nameof(Settings.GlassTransparency) or nameof(Settings.GlassTint) or nameof(Settings.GlassShine)
-                or nameof(Settings.GlassEffect) or nameof(Settings.LiquidBlur) or nameof(Settings.LiquidRefraction):
-                ApplyTheme();
-                break;
-            case nameof(Settings.IslandY) when _settings.IslandX == null && _settings.IslandY == null:
-                // "Reset to top centre" in Settings.
-                Place();
-                break;
-            case nameof(Settings.IslandSize) or nameof(Settings.IslandMaxTextWidth):
-                ApplyLayout();
-                Place();
-                Render();
-                _ = ApplyArtwork();
-                break;
-            case nameof(Settings.IslandWeight):
-                _widths.Clear();
-                Render();
-                break;
-            case nameof(Settings.IslandEffect):
-                _sweep.Effect = _settings.IslandEffect;
-                ShowPiece();
-                break;
-            case nameof(Settings.IslandAudioBars) or nameof(Settings.FrameRate):
-                UpdateBars();
-                break;
+            switch (e.PropertyName)
+            {
+                case nameof(Settings.ShowIsland):
+                    UpdateVisibility();
+                    break;
+                case nameof(Settings.IslandAlbumColour) or nameof(Settings.IslandColor):
+                    ApplyColour();
+                    break;
+                case nameof(Settings.IslandSecondLine):
+                    Render();
+                    break;
+                case nameof(Settings.IslandHideWhenPaused):
+                    UpdatePaused();
+                    break;
+                case nameof(Settings.IslandHover):
+                    SetHovered(false);
+                    Pill.Opacity = ShadowHost.Opacity = 1;
+                    break;
+                case nameof(Settings.IslandStyle):
+                    ApplyMoveMode();
+                    ApplyCorners();
+                    Place();
+                    break;
+                case nameof(Settings.IslandLocked):
+                    ApplyMoveMode();
+                    break;
+                case nameof(Settings.IslandTheme) or nameof(Settings.GlassTransparency) or nameof(Settings.GlassTint) or nameof(Settings.GlassShine)
+                    or nameof(Settings.GlassEffect) or nameof(Settings.LiquidBlur) or nameof(Settings.LiquidRefraction):
+                    ApplyTheme();
+                    break;
+                case nameof(Settings.IslandY) when _settings.IslandX == null && _settings.IslandY == null:
+                    // "Reset to top centre" in Settings.
+                    Place();
+                    break;
+                case nameof(Settings.IslandSize) or nameof(Settings.IslandMaxTextWidth):
+                    ApplyLayout();
+                    Place();
+                    Render();
+                    _ = ApplyArtwork();
+                    break;
+                case nameof(Settings.IslandWeight):
+                    _widths.Clear();
+                    Render();
+                    break;
+                case nameof(Settings.IslandEffect):
+                    _sweep.Effect = _settings.IslandEffect;
+                    ShowPiece();
+                    break;
+                case nameof(Settings.IslandAudioBars) or nameof(Settings.FrameRate):
+                    UpdateBars();
+                    break;
+            }
         }
+        catch (Exception) { StopLiquid(); }
     }
 
     void UpdateSong()
