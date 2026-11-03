@@ -57,7 +57,9 @@ sealed class LiquidGlass : IDisposable
     CanvasBitmap? _light;
     (int Width, int Height, float Radius, bool SquareTop, float Rim) _lightFor;
     Look? _look;
-    int _pending, _generation;
+    int _pending, _generation, _startGeneration;
+    /// <summary>Starts capturing a moment after a session is set up (see <see cref="Start"/>).</summary>
+    readonly DispatcherQueueTimer _startDelay;
     volatile bool _disposed;
     bool _ownsAffinity;
     Windows.Foundation.TypedEventHandler<GraphicsCaptureItem, object>? _itemClosed;
@@ -95,6 +97,15 @@ sealed class LiquidGlass : IDisposable
         _ui = ui;
         _failed = failed;
         _window = window;
+        _startDelay = ui.CreateTimer();
+        _startDelay.IsRepeating = false;
+        _startDelay.Interval = TimeSpan.FromMilliseconds(400);
+        _startDelay.Tick += (_, _) =>
+        {
+            int generation = _startGeneration;
+            try { if (IsCurrent(generation)) _session?.StartCapture(); }
+            catch (Exception e) { try { if (IsCurrent(generation)) Fail(e); } catch (Exception) { } }
+        };
         try
         {
             _device = CanvasDevice.GetSharedDevice();
@@ -192,7 +203,12 @@ sealed class LiquidGlass : IDisposable
             _window, Environment.OSVersion.Version.Build);
         if (SessionExclusion) Frozen = false;
         SetCaptureAffinity(SessionExclusion || Frozen ? Win32.WDA_NONE : Win32.WDA_EXCLUDEFROMCAPTURE);
-        _session.StartCapture();
+        // Windows takes a moment to leave the island out of capture, either way. Capturing at once could
+        // make the first frame show the island inside its own glass, and on a still screen that frame
+        // stays (no new ones come until something changes). So start capturing once it has.
+        _startGeneration = generation;
+        _startDelay.Stop();
+        _startDelay.Start();
     }
 
     /// <summary>The legacy screenshot workaround is unnecessary with session-only exclusion.</summary>
@@ -341,6 +357,7 @@ sealed class LiquidGlass : IDisposable
 
     void Stop()
     {
+        try { _startDelay.Stop(); } catch (Exception) { }
         Interlocked.Increment(ref _generation);
         Interlocked.Exchange(ref _pending, 0);
         _monitor = 0;
