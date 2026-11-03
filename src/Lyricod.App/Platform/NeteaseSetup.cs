@@ -12,10 +12,6 @@ public sealed record NeteaseInstall(string Folder, Version Version, bool Is64Bit
     public string Exe => Path.Combine(Folder, NeteaseSetup.ExeName);
 }
 
-public enum NeteaseStage { Downloading, WaitingForPermission }
-
-public enum NeteaseResult { Done, Cancelled, CouldntDownload, Failed }
-
 /// <summary>
 /// Sets up NetEase Cloud Music sync through Lyricod CM Helper (see <see cref="NeteaseSync"/>): downloads
 /// the release of the helper this Lyricod was made with, checks it against the SHA-256 Lyricod expects
