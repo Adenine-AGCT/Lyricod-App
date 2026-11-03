@@ -91,7 +91,8 @@ public sealed partial class IslandWindow : Window
         _sweep = new SweepPainter(Lyric, LyricSweep) { Effect = settings.IslandEffect };
         _transport = new TransportButtons(model, 13);
         TransportHost.Children.Add(_transport);
-        _progress = new ProgressLine(model);
+        _progress = new ProgressLine(model, hoverPreview: true);
+        _progress.SetInteractionEnabled(false);
         ProgressHost.Children.Add(_progress);
         LyricsButton.Click += (_, _) => openLyrics();
         SettingsButton.Click += (_, _) => openSettings();
@@ -174,6 +175,7 @@ public sealed partial class IslandWindow : Window
             _pieceTimer.Stop();
             _pointerTimer.Stop();
             _progressTimer.Stop();
+            _progress.SetInteractionEnabled(false);
             _barTimer.Stop();
             _revealTimer.Stop();
             _pauseTimer.Stop();
@@ -206,6 +208,7 @@ public sealed partial class IslandWindow : Window
     void OnModelChanged(PlaybackModel.Change change)
     {
         if (_closed) return;
+        if (change.HasFlag(PlaybackModel.Change.Track)) _progress.CancelInteraction();
         UpdatePaused();
         var updates = OverlayContentChanges.None;
         if (change.HasFlag(PlaybackModel.Change.Track)) updates |= OverlayContentChanges.Song | OverlayContentChanges.Lyrics;
@@ -213,6 +216,9 @@ public sealed partial class IslandWindow : Window
         if (change.HasFlag(PlaybackModel.Change.Artwork)) updates |= OverlayContentChanges.Artwork;
         if (change.HasFlag(PlaybackModel.Change.Clock)) updates |= OverlayContentChanges.Clock;
         Refresh(updates);
+        // Duration/seek support can change while paused, when there is no progress timer or new lyric clock.
+        if (change.HasFlag(PlaybackModel.Change.Progress)
+            && !change.HasFlag(PlaybackModel.Change.Clock) && !change.HasFlag(PlaybackModel.Change.Track)) UpdateProgress();
     }
 
     /// <summary>Coalesces hidden changes; every return to visibility reads a complete current snapshot.</summary>
@@ -231,10 +237,17 @@ public sealed partial class IslandWindow : Window
         if (update.HasFlag(OverlayContentChanges.Song) || update.HasFlag(OverlayContentChanges.Clock))
         {
             _transport.Update();
-            _progress.Update();
-            if (_expanded && _model.IsPlaying) _progressTimer.Start(); else _progressTimer.Stop();
+            UpdateProgress();
         }
         UpdateBars();
+    }
+
+    void UpdateProgress()
+    {
+        if (_closed || !_shown || !_expanded) { _progressTimer.Stop(); return; }
+        _progress.Update();
+        if (_model.IsPlaying && double.IsFinite(_model.Duration) && _model.Duration > 0) _progressTimer.Start();
+        else _progressTimer.Stop();
     }
 
     void OnSettingChanged(object? sender, PropertyChangedEventArgs e)

@@ -15,7 +15,7 @@ namespace Lyricod;
 public sealed partial class PlaybackModel
 {
     [Flags]
-    public enum Change { None = 0, Track = 1, Lyrics = 2, Line = 4, Clock = 8, Artwork = 16, Diagnostics = 32 }
+    public enum Change { None = 0, Track = 1, Lyrics = 2, Line = 4, Clock = 8, Artwork = 16, Diagnostics = 32, Progress = 64 }
 
     public event Action<Change>? Changed;
 
@@ -67,6 +67,7 @@ public sealed partial class PlaybackModel
     readonly TrackOverrides _overrides;
     readonly Settings _settings;
     readonly Playhead _playhead = new();
+    readonly MediaClock _mediaClock;
     readonly DispatcherQueueTimer _lineTimer;
     readonly DispatcherQueueTimer _safetyPoll;
     readonly DispatcherQueueTimer _artworkRetry;
@@ -79,6 +80,7 @@ public sealed partial class PlaybackModel
     /// <summary>A failed correction can be retried by a manual save, without a polling write loop.</summary>
     (Track Track, double Duration)? _pendingDurationCorrection;
     bool _refreshing, _refreshAgain;
+    int _seekRequest;
     /// <summary>Lyricod is quitting (<see cref="Stop"/>).</summary>
     bool _stopped;
 
@@ -94,6 +96,7 @@ public sealed partial class PlaybackModel
         _romanizer = romanizer;
         _overrides = overrides;
         _settings = settings;
+        _mediaClock = new MediaClock(_playhead);
         _lineTimer = ui.CreateTimer();
         _lineTimer.IsRepeating = false;
         _lineTimer.Tick += (_, _) => { try { Tick(); } catch (Exception e) { LastError = "line: " + e.Message; } };
@@ -168,8 +171,11 @@ public sealed partial class PlaybackModel
             do
             {
                 _refreshAgain = false;
-                Apply(await _media.ReadAsync());
-            } while (_refreshAgain);
+                long revision = _media.Revision;
+                var report = await _media.ReadAsync();
+                if (revision != _media.Revision) { _refreshAgain = true; continue; }
+                Apply(report);
+            } while (_refreshAgain && !_stopped);
         }
         catch (Exception e) { LastError = "refresh: " + e.Message; }
         finally { _refreshing = false; }
@@ -192,6 +198,7 @@ public sealed partial class PlaybackModel
                 _pendingDurationCorrection = null;
                 SongOffset = 0; _playhead.Offset = _settings.Offset;
                 _playhead.Anchor(0, Now, false);
+                _mediaClock.Reset();
                 change = Change.Track | Change.Lyrics | Change.Line | Change.Clock | Change.Artwork;
             }
             _safetyPoll.Stop();
@@ -200,27 +207,12 @@ public sealed partial class PlaybackModel
             return;
         }
 
-        bool trackChanged = now.TrackId != NowPlaying?.TrackId;
-        var previous = NowPlaying;
+        bool trackChanged = now.TrackId != NowPlaying?.TrackId || now.SessionId != NowPlaying?.SessionId;
+        if (now.Duration != NowPlaying?.Duration || now.CanSeek != NowPlaying?.CanSeek) change |= Change.Progress;
         NowPlaying = now;
         double at = Now;
-        if (now.HasTimeline)
-        {
-            // The report's position, carried to this instant.
-            double position = now.Position + (now.IsPlaying ? (DateTimeOffset.Now - now.PositionAt).TotalSeconds : 0);
-            if (_playhead.Report(position, at, now.IsPlaying, force: trackChanged)) change |= Change.Clock;
-        }
-        else if (trackChanged)
-        {
-            // No position from the player: time the song from now.
-            _playhead.Anchor(0, at, now.IsPlaying);
-            change |= Change.Clock;
-        }
-        else if (previous?.IsPlaying != now.IsPlaying)
-        {
-            _playhead.Anchor(_playhead.RawPosition(at), at, now.IsPlaying);
-            change |= Change.Clock;
-        }
+        if (_mediaClock.Apply(new MediaClockReport(now.SessionId, now.Revision, now.TrackId, now.Position, now.PositionAt,
+                now.IsPlaying, now.HasTimeline), DateTimeOffset.UtcNow, at)) change |= Change.Clock;
 
         if (trackChanged)
         {
@@ -291,18 +283,28 @@ public sealed partial class PlaybackModel
     /// there at once, as on the Mac: some players report the new position only a second later.</summary>
     public async void SeekPlayer(double seconds)
     {
+        MediaSeekRequest? seek = null;
         try
         {
             double target = Math.Clamp(seconds, 0, Duration > 0 ? Duration : double.MaxValue);
-            if (!await _media.Seek(target) || _stopped) return;
-            _playhead.Anchor(target, Now, _playhead.IsPlaying);
+            long revision = _media.Revision;
+            var source = NowPlaying;
+            int request = ++_seekRequest;
+            seek = _mediaClock.BeginSeek(target, DateTimeOffset.UtcNow, Now);
+            if (!await _media.Seek(target) || _stopped || request != _seekRequest || revision != _media.Revision ||
+                    source?.SessionId != NowPlaying?.SessionId || source?.TrackId != NowPlaying?.TrackId) return;
+            _mediaClock.Seek(seek, Now);
             Finish(Change.Clock);
             await Refresh();
         }
         catch (Exception) { /* the player went away */ }
+        finally { if (seek != null) _mediaClock.CancelSeek(seek); }
     }
 
-    public Task PlayPause() => _media.PlayPause();
+    public async Task PlayPause()
+    {
+        if (await _media.PlayPause() && !_stopped) await Refresh();
+    }
     public Task Next() => _media.Next();
     public Task Previous() => _media.Previous();
 }

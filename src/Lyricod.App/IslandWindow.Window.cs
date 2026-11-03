@@ -70,6 +70,7 @@ public sealed partial class IslandWindow
         {
             _pointerTimer.Stop();
             _progressTimer.Stop();
+            _progress.SetInteractionEnabled(false);
             _pieceTimer.Stop();
             _sweep.Set(0, 1);
             StopContentAnimations();
