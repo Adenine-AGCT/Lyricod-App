@@ -128,8 +128,8 @@ public partial class App : Application
             case ShortcutAction.ToggleLyricsWindow:
                 if (_lyricsWindow == null) OpenLyricsWindow(); else _lyricsWindow.Close();
                 break;
-            case ShortcutAction.LyricsEarlier: model.SetSongOffset(model.SongOffset + 0.5); break;
-            case ShortcutAction.LyricsLater: model.SetSongOffset(model.SongOffset - 0.5); break;
+            case ShortcutAction.LyricsEarlier: model.NudgeSongOffset(0.5, clamp: false); break;
+            case ShortcutAction.LyricsLater: model.NudgeSongOffset(-0.5, clamp: false); break;
         }
     }
 

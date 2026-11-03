@@ -21,6 +21,12 @@ public sealed class TrackOverride
 
     [JsonIgnore] public bool IsEmpty => Lyrics == null && (Offset ?? 0) == 0;
 
+    public void NudgeOffset(double delta, bool clamp)
+    {
+        double next = (Offset ?? 0) + delta;
+        Offset = Math.Round(clamp ? Math.Clamp(next, -10, 10) : next, 2);
+    }
+
     internal TrackOverride Copy() => new() { Pinned = Pinned, NeteaseId = NeteaseId, Offset = Offset };
 }
 

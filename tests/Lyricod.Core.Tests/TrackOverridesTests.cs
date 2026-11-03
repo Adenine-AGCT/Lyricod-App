@@ -93,7 +93,7 @@ public class TrackOverridesTests
                 break;
             case "edit":
                 Assert.True(store.TryGet(song, out var choice));
-                choice.Offset = 2;
+                choice.NudgeOffset(0.25, clamp: true);
                 Assert.True(store.TrySet(song, choice));
                 break;
             case "move":
@@ -101,9 +101,29 @@ public class TrackOverridesTests
                 break;
         }
         var saved = new TrackOverrides(files.File);
-        AssertChoice(saved[operation == "move" ? corrected : song], LyricsRef.Netease(7), operation == "edit" ? 2 : 1.5);
+        AssertChoice(saved[operation == "move" ? corrected : song], LyricsRef.Netease(7), operation == "edit" ? 1.75 : 1.5);
         AssertChoice(saved[other], null, operation == "replace" ? 4 : 3);
         if (operation == "move") Assert.True(saved[song].IsEmpty);
+    }
+
+    [Theory]
+    [InlineData(9.9, 0.25, true, 10)]
+    [InlineData(-9.9, -0.25, true, -10)]
+    [InlineData(10.0, 0.5, false, 10.5)]
+    [InlineData(-10.0, -0.5, false, -10.5)]
+    public void NudgeAfterDurationMigrationUsesTheDestinationOffset(double offset, double step, bool clamp, double expected)
+    {
+        using var files = new StoreFiles();
+        var store = new TrackOverrides(files.File);
+        var stale = Song(0);
+        var corrected = Song();
+        Assert.True(store.TrySet(stale, new TrackOverride { Lyrics = LyricsRef.Netease(7), Offset = 1 }));
+        Assert.True(store.TrySet(corrected, new TrackOverride { Offset = offset }));
+        Assert.True(store.TryMove(stale, corrected));
+        Assert.True(store.TryGet(corrected, out var choice));
+        choice.NudgeOffset(step, clamp);
+        Assert.True(store.TrySet(corrected, choice));
+        AssertChoice(new TrackOverrides(files.File)[corrected], LyricsRef.Netease(7), expected);
     }
 
     [Fact(SkipUnless = nameof(IsWindows), Skip = "Requires Windows file-sharing semantics.")]

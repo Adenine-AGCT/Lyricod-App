@@ -231,7 +231,7 @@ public sealed partial class SettingsWindow
     static string Hex(Windows.UI.Color c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
 
     /// <summary>A timing offset: −, the value, +, Reset.</summary>
-    FrameworkElement Offset(Func<double> get, Action<double> set, Func<bool> enabled, string? property)
+    FrameworkElement Offset(Func<double> get, Action<double> nudge, Action resetOffset, Func<bool> enabled, string? property)
     {
         var value = new TextBlock { VerticalAlignment = VerticalAlignment.Center, MinWidth = 64, TextAlignment = TextAlignment.Center };
         var minus = new Button { Content = new FontIcon { Glyph = "\uE738", FontSize = 12 }, Padding = new Thickness(10, 8, 10, 8) };
@@ -239,9 +239,9 @@ public sealed partial class SettingsWindow
         var reset = new Button { Content = L.Get("Reset") };
         ToolTipService.SetToolTip(minus, L.Get("OffsetLater"));
         ToolTipService.SetToolTip(plus, L.Get("OffsetEarlier"));
-        minus.Click += (_, _) => set(Math.Clamp(get() - 0.25, -10, 10));
-        plus.Click += (_, _) => set(Math.Clamp(get() + 0.25, -10, 10));
-        reset.Click += (_, _) => set(0);
+        minus.Click += (_, _) => nudge(-0.25);
+        plus.Click += (_, _) => nudge(0.25);
+        reset.Click += (_, _) => resetOffset();
         void Sync()
         {
             bool on = enabled();

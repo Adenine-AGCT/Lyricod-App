@@ -247,8 +247,11 @@ public sealed partial class SettingsWindow
     void Lyrics()
     {
         Heading(L.Get("TimingHeading"));
-        Card(L.Get("AllSongs"), null, Offset(() => _settings.Offset, v => _settings.Offset = v, () => true, nameof(Settings.Offset)));
-        Card(L.Get("ThisSong"), null, Offset(() => _model.SongOffset, _model.SetSongOffset, () => _model.Track != null, null));
+        Card(L.Get("AllSongs"), null, Offset(() => _settings.Offset,
+            delta => _settings.Offset = Math.Clamp(_settings.Offset + delta, -10, 10), () => _settings.Offset = 0,
+            () => true, nameof(Settings.Offset)));
+        Card(L.Get("ThisSong"), null, Offset(() => _model.SongOffset,
+            delta => _model.NudgeSongOffset(delta, clamp: true), _model.ResetSongOffset, () => _model.Track != null, null));
         Note(L.Get("TimingNote"));
         var saveError = new InfoBar { Severity = InfoBarSeverity.Error, IsClosable = false };
         void SyncSaveError()

@@ -240,8 +240,8 @@ public sealed partial class TrayPanel : Window
 
     void OnDesktopTile(object sender, RoutedEventArgs e) => _settings.ShowDesktopLyrics = DesktopTile.IsChecked == true;
     void OnIslandTile(object sender, RoutedEventArgs e) => _settings.ShowIsland = IslandTile.IsChecked == true;
-    void OnEarlier(object sender, RoutedEventArgs e) => _model.SetSongOffset(Math.Clamp(_model.SongOffset + 0.25, -10, 10));
-    void OnLater(object sender, RoutedEventArgs e) => _model.SetSongOffset(Math.Clamp(_model.SongOffset - 0.25, -10, 10));
+    void OnEarlier(object sender, RoutedEventArgs e) => _model.NudgeSongOffset(0.25, clamp: true);
+    void OnLater(object sender, RoutedEventArgs e) => _model.NudgeSongOffset(-0.25, clamp: true);
 
     void OnLyricsRow(object sender, RoutedEventArgs e) { Hide(); _chooseLyrics(); }
     void OnLyricsWindow(object sender, RoutedEventArgs e) { Hide(); _openLyricsWindow(); }
