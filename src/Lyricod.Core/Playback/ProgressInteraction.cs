@@ -3,7 +3,7 @@ namespace Lyricod.Core;
 /// <summary>Progress display state. Hovering can preview time; only releasing a scrub requests a seek.</summary>
 public sealed class ProgressInteraction(bool hoverPreview = false)
 {
-    public const double DwellSeconds = 0.6;
+    public const double DwellSeconds = 0.2;
     public const double DwellTolerance = 4;
 
     string? _trackId;

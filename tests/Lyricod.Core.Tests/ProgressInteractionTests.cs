@@ -12,7 +12,7 @@ public class ProgressInteractionTests
     static void Preview(ProgressInteraction state, double x = 50)
     {
         state.Hover(x, 2, 100, inside: true, now: 10);
-        state.ActivatePreview(10.6);
+        state.ActivatePreview(10.2);
         Assert.True(state.IsPreviewing);
     }
 
@@ -30,13 +30,13 @@ public class ProgressInteractionTests
     }
 
     [Fact]
-    public void DwellActivatesAt600MillisecondsWithoutAPlaybackTick()
+    public void DwellActivatesAt200MillisecondsWithoutAPlaybackTick()
     {
         var state = Island();
         state.Hover(50, 2, 100, inside: true, now: 10);
-        state.ActivatePreview(10.599);
+        state.ActivatePreview(10.199);
         Assert.False(state.IsPreviewing);
-        state.ActivatePreview(10.6);
+        state.ActivatePreview(10.2);
         Assert.True(state.IsPreviewing);
         Assert.Null(state.HoverDueAt);
         Assert.Equal(new ProgressDisplay(100, 180, 0.5, true), state.Display(20));
@@ -47,9 +47,9 @@ public class ProgressInteractionTests
     {
         var state = Island();
         state.Hover(50, 2, 100, true, 10);
-        state.Hover(54, 2, 100, true, 10.5);
-        Assert.Equal(10.6, state.HoverDueAt);
-        state.ActivatePreview(10.6);
+        state.Hover(54, 2, 100, true, 10.15);
+        Assert.Equal(10.2, state.HoverDueAt);
+        state.ActivatePreview(10.2);
         Assert.Equal(108, state.Display(20).Elapsed);
     }
 
@@ -61,12 +61,12 @@ public class ProgressInteractionTests
     {
         var state = Island();
         state.Hover(50, 2, 100, true, 10);
-        state.Hover(52, 2, 100, true, 10.2);
-        state.Hover(x, y, 100, true, 10.5);
-        state.ActivatePreview(10.6);
+        state.Hover(52, 2, 100, true, 10.1);
+        state.Hover(x, y, 100, true, 10.15);
+        state.ActivatePreview(10.2);
         Assert.False(state.IsPreviewing);
-        Assert.Equal(11.1, state.HoverDueAt);
-        state.ActivatePreview(11.1);
+        Assert.Equal(10.35, state.HoverDueAt);
+        state.ActivatePreview(10.35);
         Assert.True(state.IsPreviewing);
     }
 
@@ -130,7 +130,7 @@ public class ProgressInteractionTests
     {
         var state = Island();
         state.Hover(50, 2, 100, true, 10);
-        if (activate) state.ActivatePreview(10.6);
+        if (activate) state.ActivatePreview(10.2);
         state.Hover(50, 20, 100, false, 11);
         state.ActivatePreview(20);
         Assert.False(state.IsPreviewing);

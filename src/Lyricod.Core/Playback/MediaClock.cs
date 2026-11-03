@@ -41,6 +41,7 @@ public sealed class MediaClock(Playhead playhead)
     MediaClockReport? _previous;
     MediaClockReport? _timeline;
     bool _timelineStampValid;
+    bool _awaitingRebindTimeline;
     MediaSeekRequest? _pendingSeek;
     DateTimeOffset? _resumeAt;
     DateTimeOffset? _pausedAt;
@@ -49,7 +50,7 @@ public sealed class MediaClock(Playhead playhead)
     public void Reset()
     {
         _previous = _timeline = null;
-        _timelineStampValid = false;
+        _timelineStampValid = _awaitingRebindTimeline = false;
         _pendingSeek = _completedSeek = null;
         _resumeAt = _pausedAt = null;
     }
@@ -74,13 +75,27 @@ public sealed class MediaClock(Playhead playhead)
         playhead.Anchor(position, now, playhead.IsPlaying);
     }
 
-    public bool Apply(MediaClockReport report, DateTimeOffset utcNow, double now)
+    public bool Apply(MediaClockReport report, DateTimeOffset utcNow, double now) =>
+        Apply(report, utcNow, now, out _);
+
+    public bool Apply(MediaClockReport report, DateTimeOffset utcNow, double now, out bool trackChanged)
     {
+        trackChanged = false;
         // A completed asynchronous read from an older source/track must not move the clock.
         if (_previous is { } last && (report.SessionId < last.SessionId ||
                 report.SessionId == last.SessionId && report.Revision < last.Revision)) return false;
-        bool trackChanged = _previous is not { } previous || previous.SessionId != report.SessionId || previous.TrackId != report.TrackId;
+        bool sessionChanged = _previous?.SessionId != report.SessionId;
+        trackChanged = _previous is not { } previous || previous.TrackId != report.TrackId ||
+            (sessionChanged && !RepeatsTimelineOnToggle(previous, report));
         if (trackChanged) Reset();
+        else if (sessionChanged)
+        {
+            // NetEase can select another SMTC session on toggle while repeating the
+            // same sample. Keep the effective position, but retire the old commands.
+            _pendingSeek = _completedSeek = null;
+            _resumeAt = _pausedAt = null;
+            _awaitingRebindTimeline = true;
+        }
         bool stateChanged = !trackChanged && playhead.IsPlaying != report.IsPlaying;
         // PlaybackInfo and TimelineProperties need not change together. Never extrapolate a
         // repeated position/timestamp using the *new* playing state: it includes the pause.
@@ -124,8 +139,15 @@ public sealed class MediaClock(Playhead playhead)
             if (confirmsPending) _pendingSeek!.Confirmed = true;
         }
         bool changed = (trackChanged || stateChanged || useTimeline) &&
-            playhead.Report(position, now, report.IsPlaying, force: trackChanged);
+            playhead.Report(position, now, report.IsPlaying, force: trackChanged || (_awaitingRebindTimeline && useTimeline));
+        if (useTimeline) _awaitingRebindTimeline = false;
         _previous = report;
         return changed;
     }
+
+    bool RepeatsTimelineOnToggle(MediaClockReport previous, MediaClockReport report) =>
+        previous.IsPlaying != report.IsPlaying && previous.HasTimeline && report.HasTimeline &&
+        previous.Position == report.Position && previous.PositionAt == report.PositionAt &&
+        _timelineStampValid && _timeline is { } accepted &&
+        accepted.Position == report.Position && accepted.PositionAt == report.PositionAt;
 }

@@ -48,6 +48,36 @@ public class MediaClockTests
     }
 
     [Fact]
+    public void CapturedIslandToggleAcrossNeteaseSessionsKeepsTheEffectivePosition()
+    {
+        // PR4 native island trace 401-676. Wall time is shifted from 09:30:00 UTC
+        // and session IDs are local stand-ins for the two observed rebinds.
+        var p = new Playhead();
+        var clock = new MediaClock(p);
+        bool Apply(double at, double position, double stamp, bool playing, int session)
+        {
+            clock.Apply(Report(position, stamp, playing, session: session), Epoch.AddSeconds(at), at, out bool trackChanged);
+            return trackChanged;
+        }
+
+        Apply(18.5931508, 41.83, 18.5931508, true, 1);
+        Apply(20.5438335, 41.83, 18.5931508, false, 1);
+        Apply(20.6591912, 43.79, 20.6518757, false, 1);
+        Apply(159.3545323, 43.79, 20.6518757, false, 1);
+        Assert.Equal(43.7806827, p.RawPosition(159.3545323), 6);
+
+        Assert.False(Apply(159.4998612, 43.79, 20.6518757, true, 2));
+        Assert.Equal(43.7806827, p.RawPosition(159.4998612), 6);
+        Apply(159.9954762, 44.51, 159.9882300, true, 2);
+        Assert.Equal(44.5172462, p.RawPosition(159.9954762), 6);
+
+        Assert.False(Apply(161.3298508, 44.51, 159.9882300, false, 3));
+        Assert.Equal(45.8516208, p.RawPosition(162), 6);
+        Apply(161.610, 46.13, 161.604318, false, 3);
+        Assert.Equal(46.13, p.RawPosition(162), 6);
+    }
+
+    [Fact]
     public void PauseWithUnchangedPlayingTimelineFreezesCurrentPosition()
     {
         var p = new Playhead();
@@ -172,6 +202,37 @@ public class MediaClockTests
         Assert.False(clock.Apply(Report(2, 3, false, session: 2, revision: 6), Epoch.AddSeconds(3), 101));
         Assert.True(p.IsPlaying);
         Assert.Equal(41, p.RawPosition(101), 9);
+    }
+
+    [Theory]
+    [InlineData("other", 10, 0, true, true)]
+    [InlineData("song", 10, 0, false, true)]
+    [InlineData("song", 10, 2, true, true)]
+    [InlineData("song", 11, 0, true, true)]
+    [InlineData("song", 10, 0, true, false)]
+    public void SessionChangeNeedsMatchingSongSampleAndToggleToKeepLyrics(string track, double position,
+        double stamp, bool playing, bool timeline)
+    {
+        var clock = new MediaClock(new Playhead());
+        clock.Apply(Report(10, 0, false), Epoch, 100);
+        clock.Apply(Report(position, stamp, playing, timeline, session: 2, track: track),
+            Epoch.AddSeconds(2), 102, out bool trackChanged);
+        Assert.True(trackChanged);
+    }
+
+    [Fact]
+    public void RebindingKeepsTimelineButInvalidatesCommandsAndReadsFromOldSession()
+    {
+        var p = new Playhead();
+        var clock = new MediaClock(p);
+        clock.Apply(Report(10, 0, false), Epoch, 100);
+        var old = clock.BeginSeek(60, Epoch.AddSeconds(1), 101);
+        Assert.True(clock.Apply(Report(10, 0, true, session: 2), Epoch.AddSeconds(2), 102, out bool trackChanged));
+        Assert.False(trackChanged);
+        clock.Seek(old, 103);
+        Assert.False(clock.Apply(Report(60, 3, false, session: 1, revision: 20), Epoch.AddSeconds(3), 103));
+        Assert.True(p.IsPlaying);
+        Assert.Equal(11, p.RawPosition(103), 9);
     }
 
     [Fact]

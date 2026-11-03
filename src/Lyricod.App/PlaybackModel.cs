@@ -15,7 +15,7 @@ namespace Lyricod;
 public sealed partial class PlaybackModel
 {
     [Flags]
-    public enum Change { None = 0, Track = 1, Lyrics = 2, Line = 4, Clock = 8, Artwork = 16, Diagnostics = 32, Progress = 64 }
+    public enum Change { None = 0, Track = 1, Lyrics = 2, Line = 4, Clock = 8, Artwork = 16, Diagnostics = 32, Progress = 64, Session = 128 }
 
     public event Action<Change>? Changed;
 
@@ -201,12 +201,12 @@ public sealed partial class PlaybackModel
             return;
         }
 
-        bool trackChanged = now.TrackId != NowPlaying?.TrackId || now.SessionId != NowPlaying?.SessionId;
+        if (now.SessionId != NowPlaying?.SessionId) change |= Change.Session;
         if (now.Duration != NowPlaying?.Duration || now.CanSeek != NowPlaying?.CanSeek) change |= Change.Progress;
         NowPlaying = now;
         double at = Now;
         if (_mediaClock.Apply(new MediaClockReport(now.SessionId, now.Revision, now.TrackId, now.Position, now.PositionAt,
-                now.IsPlaying, now.HasTimeline), DateTimeOffset.UtcNow, at)) change |= Change.Clock;
+                now.IsPlaying, now.HasTimeline), DateTimeOffset.UtcNow, at, out bool trackChanged)) change |= Change.Clock;
 
         if (trackChanged)
         {

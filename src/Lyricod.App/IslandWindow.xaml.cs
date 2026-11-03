@@ -210,7 +210,7 @@ public sealed partial class IslandWindow : Window
         if (_closed) return;
         bool track = change.HasFlag(PlaybackModel.Change.Track);
         bool clock = change.HasFlag(PlaybackModel.Change.Clock);
-        if (track) _progress.CancelInteraction();
+        if (track || change.HasFlag(PlaybackModel.Change.Session)) _progress.CancelInteraction();
         UpdatePaused();
         if (track) UpdateSong();
         if (change.HasFlag(PlaybackModel.Change.Artwork)) _ = ApplyArtwork();
