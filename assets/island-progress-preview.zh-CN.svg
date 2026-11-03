@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="320" viewBox="0 0 880 320" role="img" aria-labelledby="title desc">
+  <title id="title">展开灵动岛后的进度条悬停预览</title>
+  <desc id="desc">以一首暂停在 0:20、总长 3:20 的歌曲为例。鼠标停在进度条四分之三处 600 毫秒后，左侧显示 2:30，右侧仍显示 -3:00。移开后恢复 0:20。</desc>
+  <defs>
+    <linearGradient id="panel" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#25313d"/><stop offset="1" stop-color="#171d27"/>
+    </linearGradient>
+  </defs>
+  <rect width="880" height="320" rx="20" fill="#10151c"/>
+  <g font-family="Segoe UI, Microsoft YaHei, sans-serif" fill="#f1f5f8">
+    <text x="36" y="48" font-size="23" font-weight="600">进度条悬停预览</text>
+    <text x="36" y="78" font-size="15" fill="#b6c2cf">以暂停在 0:20 的歌曲为例 · 总时长 3:20</text>
+    <g transform="translate(36 104)">
+      <rect width="390" height="130" rx="18" fill="url(#panel)" stroke="#394552"/>
+      <text x="22" y="36" font-size="16">实际进度</text>
+      <path d="M24 69h342" stroke="#495361" stroke-width="5" stroke-linecap="round"/>
+      <path d="M24 69h34.2" stroke="#91d6cc" stroke-width="5" stroke-linecap="round"/>
+      <g font-size="14" fill="#c1cad4"><text x="22" y="101">0:20</text><text x="368" y="101" text-anchor="end">-3:00</text></g>
+    </g>
+    <g transform="translate(454 104)">
+      <rect width="390" height="130" rx="18" fill="url(#panel)" stroke="#394552"/>
+      <text x="22" y="36" font-size="16">同一位置悬停 600 毫秒后</text>
+      <path d="M24 69h342" stroke="#495361" stroke-width="5" stroke-linecap="round"/>
+      <path d="M24 69h256.5" stroke="#91d6cc" stroke-width="5" stroke-linecap="round"/>
+      <path d="M280.5 69l3 20 4-6 6 7 3-3-6-7 7-1z" fill="white" stroke="#18212d" stroke-width="1.5"/>
+      <text x="22" y="101" font-size="14">2:30</text><text x="368" y="101" font-size="14" text-anchor="end" fill="#c1cad4">-3:00</text>
+    </g>
+    <text x="36" y="271" font-size="16">左侧时间和填充随指针变化，右侧仍显示实际剩余时间。</text>
+    <text x="36" y="297" font-size="14" fill="#b6c2cf">移开即可恢复实际进度。图中只展示进度条交互。</text>
+  </g>
+</svg>

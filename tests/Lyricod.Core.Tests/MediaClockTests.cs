@@ -247,6 +247,72 @@ public class MediaClockTests
         Assert.Equal(target + 0.1, p.RawPosition(102.1), 9);
     }
 
+    [Theory]
+    [InlineData(true, 60)]
+    [InlineData(false, 60)]
+    [InlineData(true, 2)]
+    [InlineData(false, 2)]
+    public void DelayedInFlightHeartbeatCannotUndoCompletedSeek(bool playing, double target)
+    {
+        var p = new Playhead();
+        var clock = new MediaClock(p);
+        clock.Apply(Report(10, 0, playing), Epoch, 100);
+        var seek = clock.BeginSeek(target, Epoch.AddSeconds(1), 101);
+        clock.Seek(seek, 102);
+        Assert.False(clock.Apply(Report(playing ? 11.5 : 10, 1.5, playing), Epoch.AddSeconds(2.1), 102.1));
+        Assert.Equal(playing ? target + 0.1 : target, p.RawPosition(102.1), 9);
+        Assert.True(clock.Apply(Report(target - 1, 1.9, playing), Epoch.AddSeconds(2.2), 102.2));
+        Assert.Equal(playing ? target - 0.7 : target - 1, p.RawPosition(102.2), 9);
+        Assert.True(clock.Apply(Report(10, 2.3, playing), Epoch.AddSeconds(2.3), 102.3));
+        Assert.Equal(10, p.RawPosition(102.3), 9);
+    }
+
+    [Theory]
+    [InlineData(true, 0)]
+    [InlineData(false, 0)]
+    [InlineData(true, -90000)]
+    [InlineData(false, -90000)]
+    public void UndatedHeartbeatThenConfirmationCanArriveAfterCompletion(bool playing, double stamp)
+    {
+        var p = new Playhead();
+        var clock = new MediaClock(p);
+        clock.Apply(Report(10, stamp, playing), Epoch, 100);
+        var seek = clock.BeginSeek(60, Epoch.AddSeconds(1), 101);
+        clock.Seek(seek, 102);
+        Assert.False(clock.Apply(Report(playing ? 11.5 : 10.1, stamp, playing), Epoch.AddSeconds(2.1), 102.1));
+        Assert.Equal(playing ? 60.1 : 60, p.RawPosition(102.1), 9);
+        Assert.True(clock.Apply(Report(59, stamp, playing), Epoch.AddSeconds(2.2), 102.2));
+        Assert.Equal(59, p.RawPosition(102.2), 9);
+        Assert.True(clock.Apply(Report(10, stamp, playing), Epoch.AddSeconds(2.3), 102.3));
+        Assert.Equal(10, p.RawPosition(102.3), 9);
+    }
+
+    [Fact]
+    public void PausedPlayerWithConstantStampCanSeekBackAfterUnconfirmedLocalSeek()
+    {
+        var p = new Playhead();
+        var clock = new MediaClock(p);
+        clock.Apply(Report(10, 0, false), Epoch, 100);
+        clock.Seek(clock.BeginSeek(60, Epoch.AddSeconds(1), 101), 102);
+        Assert.False(clock.Apply(Report(10.1, 0, false), Epoch.AddSeconds(2.1), 102.1));
+        Assert.Equal(60, p.RawPosition(102.1), 9);
+        Assert.True(clock.Apply(Report(10.1, 0, false), Epoch.AddSeconds(62), 162));
+        Assert.Equal(10.1, p.RawPosition(162), 9);
+    }
+
+    [Fact]
+    public void SecondUndatedSeekCanConfirmBackAtFirstSeeksOldPosition()
+    {
+        var p = new Playhead();
+        var clock = new MediaClock(p);
+        clock.Apply(Report(10, 0, false), Epoch, 100);
+        clock.Seek(clock.BeginSeek(60, Epoch.AddSeconds(1), 101), 102);
+        var back = clock.BeginSeek(10, Epoch.AddSeconds(3), 103);
+        clock.Apply(Report(10.1, 0, false), Epoch.AddSeconds(3.1), 103.1);
+        clock.Seek(back, 104);
+        Assert.Equal(10.1, p.RawPosition(104), 9);
+    }
+
     [Fact]
     public void BackwardSeekKeepsAnAlreadyObservedConfirmation()
     {

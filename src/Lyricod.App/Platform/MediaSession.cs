@@ -246,9 +246,19 @@ public sealed class MediaSession : IDisposable
         };
     }
 
-    public async Task<bool> PlayPause()
+    // Pick can switch the followed session before its UI notification is delivered.
+    GlobalSystemMediaTransportControlsSession? CommandTarget(NowPlaying? displayed)
     {
-        if (Current is not { } s) return false;
+        lock (_gate)
+            return !_disposed && (displayed == null || displayed.SessionId == _sessionId && displayed.Revision == _revision)
+                ? _session : null;
+    }
+
+    public Task<bool> PlayPause() => PlayPause(null);
+
+    internal async Task<bool> PlayPause(NowPlaying? displayed)
+    {
+        if (CommandTarget(displayed) is not { } s) return false;
         try { return await s.TryTogglePlayPauseAsync(); }
         catch (Exception) { return false; } // the player went away or rejected the request
     }
@@ -256,8 +266,10 @@ public sealed class MediaSession : IDisposable
     public async Task Previous() { if (Current is { } s) await s.TrySkipPreviousAsync(); }
 
     /// <summary>Moves the player to <paramref name="seconds"/>, if it allows seeking.</summary>
-    public async Task<bool> Seek(double seconds) =>
-        Current is { } s && await s.TryChangePlaybackPositionAsync((long)(Math.Max(seconds, 0) * TimeSpan.TicksPerSecond));
+    public Task<bool> Seek(double seconds) => Seek(seconds, null);
+
+    internal async Task<bool> Seek(double seconds, NowPlaying? displayed) =>
+        CommandTarget(displayed) is { } s && await s.TryChangePlaybackPositionAsync((long)(Math.Max(seconds, 0) * TimeSpan.TicksPerSecond));
 
     /// <summary>Stops listening to Windows' media controls; no more <see cref="Changed"/>.</summary>
     public void Dispose()

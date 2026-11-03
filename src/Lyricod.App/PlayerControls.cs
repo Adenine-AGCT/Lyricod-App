@@ -106,8 +106,8 @@ sealed partial class ProgressLine : Grid
         PointerMoved += OnPointerMoved;
         PointerExited += (_, _) => CancelPreview();
         PointerReleased += OnPointerReleased;
-        PointerCanceled += (_, _) => CancelInteraction();
-        PointerCaptureLost += (_, _) => CancelInteraction();
+        PointerCanceled += OnPointerInterrupted;
+        PointerCaptureLost += OnPointerInterrupted;
         Unloaded += (_, _) => CancelInteraction();
         RowSpacing = 4;
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -159,13 +159,14 @@ sealed partial class ProgressLine : Grid
         try
         {
             SyncMedia();
+            if (!_interactionEnabled || _scrubPointer != null) return;
             CancelPreview();
-            if (!_interactionEnabled || !CanSeek) return;
+            if (!CanSeek) return;
             var point = e.GetCurrentPoint(_bar);
             if (point.PointerDeviceType == PointerDeviceType.Mouse && point.Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed) return;
             var p = point.Position;
             if (p.Y < -10 || p.Y > _bar.ActualHeight + 10) return; // the bar, not the times under it
-            if (!CapturePointer(e.Pointer)) return;
+            if (_bar.ActualWidth <= 0 || !CapturePointer(e.Pointer)) return;
             _scrubPointer = e.Pointer.PointerId;
             _interaction.BeginScrub(p.X / Math.Max(_bar.ActualWidth, 1), CanSeek);
             Update();
@@ -196,10 +197,11 @@ sealed partial class ProgressLine : Grid
                 && !point.Properties.IsLeftButtonPressed && !point.Properties.IsRightButtonPressed
                 && !point.Properties.IsMiddleButtonPressed && !point.Properties.IsXButton1Pressed && !point.Properties.IsXButton2Pressed
                 && p.X >= 0 && p.X <= _bar.ActualWidth && p.Y >= -10 && p.Y < _bar.ActualHeight + RowSpacing;
+            bool wasPreviewing = _interaction.IsPreviewing;
             double? due = _interaction.HoverDueAt;
             _interaction.Hover(p.X, p.Y, _bar.ActualWidth, inside, PlaybackModel.Now);
             if (_interaction.HoverDueAt != due) SchedulePreview();
-            Update();
+            if (wasPreviewing || _interaction.IsPreviewing) Update();
         }
         catch (Exception) { }
     }
@@ -223,6 +225,12 @@ sealed partial class ProgressLine : Grid
             e.Handled = true;
         }
         catch (Exception) { }
+    }
+
+    void OnPointerInterrupted(object sender, PointerRoutedEventArgs e)
+    {
+        if (_scrubPointer == e.Pointer.PointerId) CancelInteraction();
+        else if (_scrubPointer == null && e.Pointer.PointerDeviceType == PointerDeviceType.Mouse) CancelPreview();
     }
 
     void SchedulePreview()

@@ -258,12 +258,11 @@ public sealed partial class PlaybackModel
         try
         {
             double target = Math.Clamp(seconds, 0, Duration > 0 ? Duration : double.MaxValue);
-            long revision = _media.Revision;
-            var source = NowPlaying;
+            if (NowPlaying is not { } source) return;
             int request = ++_seekRequest;
             seek = _mediaClock.BeginSeek(target, DateTimeOffset.UtcNow, Now);
-            if (!await _media.Seek(target) || _stopped || request != _seekRequest || revision != _media.Revision ||
-                    source?.SessionId != NowPlaying?.SessionId || source?.TrackId != NowPlaying?.TrackId) return;
+            if (!await _media.Seek(target, source) || _stopped || request != _seekRequest || source.Revision != _media.Revision ||
+                    source.SessionId != NowPlaying?.SessionId || source.TrackId != NowPlaying?.TrackId) return;
             _mediaClock.Seek(seek, Now);
             Finish(Change.Clock);
             await Refresh();
@@ -274,7 +273,7 @@ public sealed partial class PlaybackModel
 
     public async Task PlayPause()
     {
-        if (await _media.PlayPause() && !_stopped) await Refresh();
+        if (await _media.PlayPause(NowPlaying) && !_stopped) await Refresh();
     }
     public Task Next() => _media.Next();
     public Task Previous() => _media.Previous();

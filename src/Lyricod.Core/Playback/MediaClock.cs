@@ -8,7 +8,31 @@ public readonly record struct MediaClockReport(long SessionId, long Revision, st
 public sealed record MediaSeekRequest(double Position, DateTimeOffset RequestedAt, double At,
     double PreviousPosition, bool WasPlaying)
 {
+    const double UndatedHeartbeatGraceSeconds = 2;
+
     internal bool Confirmed { get; set; }
+    internal double CompletedAt { get; set; }
+
+    internal double OldPositionAt(double at) => PreviousPosition + (WasPlaying ? at - At : 0);
+
+    internal bool FavorsTarget(double position, double oldPosition) =>
+        Math.Abs(position - Position) < Math.Abs(position - oldPosition);
+
+    internal bool RejectsAfterCompletion(MediaClockReport report, bool dated, double now)
+    {
+        if (dated)
+        {
+            double elapsed = (report.PositionAt - RequestedAt).TotalSeconds;
+            return elapsed < 0 || (elapsed <= CompletedAt - At &&
+                !FavorsTarget(report.Position, OldPositionAt(At + elapsed)));
+        }
+        // Without a usable timestamp, only discard samples on the old trajectory
+        // for one safety poll. Later external seeks can return to that same position.
+        if (Confirmed || now - CompletedAt > UndatedHeartbeatGraceSeconds) return false;
+        double nearestOld = Math.Clamp(report.Position, PreviousPosition, OldPositionAt(CompletedAt));
+        return Math.Abs(report.Position - nearestOld) <= Playhead.Tolerance &&
+            !FavorsTarget(report.Position, nearestOld);
+    }
 }
 
 /// <summary>Converts media snapshots into the steady clock used by lyrics and progress controls.</summary>
@@ -20,14 +44,14 @@ public sealed class MediaClock(Playhead playhead)
     MediaSeekRequest? _pendingSeek;
     DateTimeOffset? _resumeAt;
     DateTimeOffset? _pausedAt;
-    DateTimeOffset? _seekAt;
+    MediaSeekRequest? _completedSeek;
 
     public void Reset()
     {
         _previous = _timeline = null;
         _timelineStampValid = false;
-        _pendingSeek = null;
-        _resumeAt = _pausedAt = _seekAt = null;
+        _pendingSeek = _completedSeek = null;
+        _resumeAt = _pausedAt = null;
     }
 
     public MediaSeekRequest BeginSeek(double position, DateTimeOffset utcNow, double now) =>
@@ -44,7 +68,8 @@ public sealed class MediaClock(Playhead playhead)
         if (!ReferenceEquals(_pendingSeek, request)) return;
         _pendingSeek = null;
         // The player can publish its confirming position before the async request completes.
-        _seekAt = request.RequestedAt;
+        request.CompletedAt = now;
+        _completedSeek = request;
         double position = request.Confirmed ? playhead.RawPosition(now) : request.Position;
         playhead.Anchor(position, now, playhead.IsPlaying);
     }
@@ -68,20 +93,26 @@ public sealed class MediaClock(Playhead playhead)
         // A delayed report from before a resume or local seek cannot undo that anchor.
         // Some players never update LastUpdatedTime; a changed position with that same
         // timestamp is still useful (including external seeking), but is treated as "now".
-        bool beforeAnchor = validStamp && !sameStampNewPosition &&
-            ((_seekAt is { } seek && report.PositionAt < seek) ||
-             (!stateChanged && report.IsPlaying && _resumeAt is { } resume && report.PositionAt < resume) ||
+        bool dated = validStamp && !sameStampNewPosition;
+        bool beforeAnchor = dated &&
+            ((!stateChanged && report.IsPlaying && _resumeAt is { } resume && report.PositionAt < resume) ||
              (stateChanged && report.IsPlaying && _pausedAt is { } pause && report.PositionAt <= pause));
-        bool useTimeline = newTimeline && !older && !beforeAnchor;
+        // A second local seek can legitimately return to the first seek's old position.
+        // For constant timestamps, match its confirmation before filtering the old window.
+        double sampleAt = dated ? now - (utcNow - report.PositionAt).TotalSeconds : now;
+        bool confirmsPending = _pendingSeek is { } pending && sampleAt >= pending.At &&
+            pending.FavorsTarget(report.Position, pending.OldPositionAt(sampleAt));
+        bool useTimeline = newTimeline && !older && !beforeAnchor &&
+            (confirmsPending || _completedSeek?.RejectsAfterCompletion(report, dated, now) != true);
         if (stateChanged && report.IsPlaying)
             // A fresh resume sample already describes playing time, including read latency.
             // Only a repeated/undated sample needs the local receipt time as its resume anchor.
-            _resumeAt = useTimeline && validStamp && !sameStampNewPosition ? report.PositionAt : utcNow;
+            _resumeAt = useTimeline && dated ? report.PositionAt : utcNow;
         if (!report.IsPlaying && (trackChanged || stateChanged)) _pausedAt = utcNow;
         if (useTimeline)
         {
             position = report.Position;
-            if (report.IsPlaying && validStamp && !sameStampNewPosition)
+            if (report.IsPlaying && dated)
             {
                 var start = report.PositionAt;
                 if (_resumeAt is { } resumedAt && resumedAt > start) start = resumedAt;
@@ -89,20 +120,8 @@ public sealed class MediaClock(Playhead playhead)
             }
             _timeline = report;
             _timelineStampValid = validStamp;
-            if (_pendingSeek is { } request)
-            {
-                // Compare at the sample's instant, not command completion: playback may
-                // have continued after the confirming event. Keep that evidence across
-                // later heartbeats. A normal pre-seek heartbeat follows the old trajectory.
-                bool dated = validStamp && !sameStampNewPosition;
-                double sampleAt = dated ? now - (utcNow - report.PositionAt).TotalSeconds : now;
-                if (sampleAt >= request.At)
-                {
-                    double previousPosition = request.PreviousPosition + (request.WasPlaying ? sampleAt - request.At : 0);
-                    if (Math.Abs(report.Position - request.Position) < Math.Abs(report.Position - previousPosition))
-                        request.Confirmed = true;
-                }
-            }
+            if (_completedSeek is { } completed) completed.Confirmed = true;
+            if (confirmsPending) _pendingSeek!.Confirmed = true;
         }
         bool changed = (trackChanged || stateChanged || useTimeline) &&
             playhead.Report(position, now, report.IsPlaying, force: trackChanged);
