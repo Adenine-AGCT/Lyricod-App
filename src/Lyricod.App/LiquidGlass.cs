@@ -58,8 +58,11 @@ sealed class LiquidGlass : IDisposable
     (int Width, int Height, float Radius, bool SquareTop, float Rim) _lightFor;
     Look? _look;
     int _pending, _generation, _startGeneration;
-    /// <summary>On older Windows, starts capturing a moment after the island goes out of every capture (see <see cref="Start"/>).</summary>
+    /// <summary>The steps of starting a session, a moment apart (see <see cref="Begin"/>).</summary>
     readonly DispatcherQueueTimer _startDelay;
+    /// <summary>Starting a session: 0, waiting for the island to show; 1, it showed a moment ago; 2 (older Windows),
+    /// waiting for it to leave every capture; 3, capturing.</summary>
+    int _startStep;
     /// <summary>With session exclusion: the capture configuration that leaves the island out. Frames made with earlier ones aren't used.</summary>
     ulong _excludedFrom;
     /// <summary>When session exclusion was set (<see cref="Environment.TickCount64"/>), for frames that don't say their configuration.</summary>
@@ -106,11 +109,10 @@ sealed class LiquidGlass : IDisposable
         _window = window;
         _startDelay = ui.CreateTimer();
         _startDelay.IsRepeating = false;
-        _startDelay.Interval = TimeSpan.FromMilliseconds(400);
         _startDelay.Tick += (_, _) =>
         {
             int generation = _startGeneration;
-            try { if (IsCurrent(generation)) _session?.StartCapture(); }
+            try { if (IsCurrent(generation)) Begin(); }
             catch (Exception e) { try { if (IsCurrent(generation)) Fail(e); } catch (Exception) { } }
         };
         try
@@ -204,15 +206,40 @@ sealed class LiquidGlass : IDisposable
         _session.IsCursorCaptureEnabled = false;
         Borderless(_session);
         _startGeneration = generation;
+        _startStep = 0;
+        Begin();
+    }
+
+    /// <summary>
+    /// Starts the session capturing, step by step. Windows leaves a window out of capture only once it's
+    /// on screen: the island starts its glass just before it shows, and an exclusion set then is ignored
+    /// (the glass then captures itself over and over, into solid colour). So nothing starts until the
+    /// island has been showing a moment.
+    /// </summary>
+    void Begin()
+    {
+        if (_session == null) return;
+        if (_startStep == 2)
+        {
+            _session.StartCapture();
+            _startStep = 3;
+            return;
+        }
+        if (_startStep > 2) return;
+        if (!Win32.IsWindowVisible(_window) || _startStep == 0)
+        {
+            _startStep = Win32.IsWindowVisible(_window) ? 1 : 0;
+            Next(100);
+            return;
+        }
         nint native = ((IWinRTObject)_session).NativeObject.ThisPtr;
         int build = Environment.OSVersion.Version.Build;
         if (DisplayCaptureExclusion.IsAvailable(native, build))
         {
-            // Windows can ignore a session's exclusion list set before it starts capturing (the glass then
-            // captures itself over and over, into solid colour), so it's set once capturing has started.
             // Each frame says which capture configuration it was made with: until frames come from the
             // one that leaves the island out, they're left unused. Other recorders see the island throughout.
             _session.StartCapture();
+            _startStep = 3;
             if (DisplayCaptureExclusion.TryExcludeWindow(native, _window, build, out ulong iteration))
             {
                 _excludedFrom = iteration;
@@ -221,15 +248,22 @@ sealed class LiquidGlass : IDisposable
                 return;
             }
             // Capturing already: leave the island out of every capture, and frames unused until it's out.
-            SetCaptureAffinity(Win32.WDA_EXCLUDEFROMCAPTURE);
+            SetCaptureAffinity(Frozen ? Win32.WDA_NONE : Win32.WDA_EXCLUDEFROMCAPTURE);
             _skipUntil = Environment.TickCount64 + 400;
             return;
         }
         // Older Windows: the island goes out of every capture. Windows takes a moment to do that, and
         // capturing at once could make the first frame show the island inside its own glass (on a still
         // screen that frame stays: no new ones come until something changes), so capturing starts a moment later.
-        SetCaptureAffinity(Win32.WDA_EXCLUDEFROMCAPTURE);
+        SetCaptureAffinity(Frozen ? Win32.WDA_NONE : Win32.WDA_EXCLUDEFROMCAPTURE);
+        _startStep = 2;
+        Next(400);
+    }
+
+    void Next(int milliseconds)
+    {
         _startDelay.Stop();
+        _startDelay.Interval = TimeSpan.FromMilliseconds(milliseconds);
         _startDelay.Start();
     }
 
