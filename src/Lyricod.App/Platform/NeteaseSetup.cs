@@ -18,8 +18,8 @@ public enum NeteaseResult { Done, Cancelled, CouldntDownload, Failed }
 
 /// <summary>
 /// Sets up NetEase Cloud Music sync through Lyricod CM Helper (see <see cref="NeteaseSync"/>): downloads
-/// the helper from its latest release, checks it against the SHA-256 GitHub lists, runs it as
-/// administrator, then opens NetEase Cloud Music again if it was open.
+/// the release of the helper this Lyricod was made with, checks it against the SHA-256 Lyricod expects
+/// (which GitHub must list too), runs it as administrator, then opens NetEase Cloud Music again if it was open.
 /// </summary>
 public static class NeteaseSetup
 {
@@ -152,7 +152,8 @@ public static class NeteaseSetup
             using var request = new HttpRequestMessage(HttpMethod.Get, NeteaseSync.HelperEndpoint);
             request.Headers.Accept.ParseAdd("application/vnd.github+json");
             using var reply = await http.SendAsync(request);
-            if (!reply.IsSuccessStatusCode || NeteaseSync.FindHelper(await reply.Content.ReadAsStringAsync()) is not { } helper) return null;
+            if (!reply.IsSuccessStatusCode || NeteaseSync.FindHelper(await reply.Content.ReadAsStringAsync()) is not { } helper
+                || !NeteaseSync.IsPinned(helper)) return null;
             string path = Path.Combine(folder, NeteaseSync.HelperName);
             using (var response = await http.GetAsync(helper.Url, HttpCompletionOption.ResponseHeadersRead))
             {
