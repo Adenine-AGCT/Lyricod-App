@@ -23,23 +23,21 @@ public static class NeteaseSetup
     const string LoaderName = "msimg32.dll";
 
     /// <summary>The installed NetEase Cloud Music, or null when there's none Lyricod can find.</summary>
-    public static NeteaseInstall? Find()
+    public static NeteaseInstall? Find() => NeteaseSync.FindInstallation(
+        [() => AppPath(RegistryHive.LocalMachine, RegistryView.Registry64),
+         () => AppPath(RegistryHive.LocalMachine, RegistryView.Registry32),
+         () => AppPath(RegistryHive.CurrentUser, RegistryView.Default), RunningFolder], ReadInstall);
+
+    static NeteaseInstall? ReadInstall(string folder)
     {
-        try
-        {
-            string? folder = AppPath(RegistryHive.LocalMachine, RegistryView.Registry64) ?? AppPath(RegistryHive.LocalMachine, RegistryView.Registry32)
-                ?? AppPath(RegistryHive.CurrentUser, RegistryView.Default) ?? RunningFolder();
-            if (folder == null) return null;
-            string exe = Path.Combine(folder, ExeName);
-            if (!File.Exists(exe)) return null;
-            var info = FileVersionInfo.GetVersionInfo(exe);
-            var version = new Version(info.FileMajorPart, info.FileMinorPart, info.FileBuildPart);
-            bool is64Bit;
-            using (var file = File.OpenRead(exe)) is64Bit = NeteaseSync.Machine(file) == NeteaseSync.X64;
-            bool installed = File.Exists(Path.Combine(folder, LoaderName)) && NeteaseSync.HasInfLink(DataFolder());
-            return new NeteaseInstall(folder, version, is64Bit, installed);
-        }
-        catch (Exception) { return null; }
+        string exe = Path.Combine(folder, ExeName);
+        if (!File.Exists(exe)) return null;
+        var info = FileVersionInfo.GetVersionInfo(exe);
+        var version = new Version(info.FileMajorPart, info.FileMinorPart, info.FileBuildPart);
+        bool is64Bit;
+        using (var file = File.OpenRead(exe)) is64Bit = NeteaseSync.Machine(file) == NeteaseSync.X64;
+        bool installed = File.Exists(Path.Combine(folder, LoaderName)) && NeteaseSync.HasInfLink(DataFolder());
+        return new NeteaseInstall(folder, version, is64Bit, installed);
     }
 
     /// <summary>Where installers register cloudmusic.exe (32-bit installers under the 32-bit view).</summary>
