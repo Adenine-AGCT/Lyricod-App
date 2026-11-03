@@ -71,6 +71,20 @@ public class IslandSettingsTests
     }
 
     [Fact]
+    public void FloatingDisplayPointRoundTripsWithItsEdge()
+    {
+        var settings = new Settings { IslandX = 1920, IslandY = 1040, IslandDisplayX = 1770, IslandDisplayY = 1023 };
+        var saved = JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(settings, Json), Json)!;
+        Assert.Equal(1920, saved.IslandX);
+        Assert.Equal(1040, saved.IslandY);
+        Assert.Equal(1770, saved.IslandDisplayX);
+        Assert.Equal(1023, saved.IslandDisplayY);
+        var old = JsonSerializer.Deserialize<Settings>("{\"IslandX\":100,\"IslandY\":50}", Json)!;
+        Assert.Null(old.IslandDisplayX);
+        Assert.Null(old.IslandDisplayY);
+    }
+
+    [Fact]
     public void BeingNewIsntSaved()
     {
         // Only a first run's fresh settings are new (and may then pick defaults for the PC).

@@ -28,7 +28,7 @@ public sealed partial class IslandWindow
     {
         // A saved spot on a screen that's no longer there (unplugged) falls back to the default.
         DisplayArea? display = _settings.IslandX is int sx && _settings.IslandY is int sy
-            ? DisplayArea.GetFromPoint(new PointInt32(sx, sy), DisplayAreaFallback.None) : null;
+            ? DisplayArea.GetFromPoint(new PointInt32(_settings.IslandDisplayX ?? sx, _settings.IslandDisplayY ?? sy), DisplayAreaFallback.None) : null;
         var area = (display ?? DisplayArea.Primary).WorkArea;
         _screenWidth = area.Width / k;
         double x = display != null ? _settings.IslandX!.Value : area.X + area.Width / 2.0;
@@ -97,8 +97,14 @@ public sealed partial class IslandWindow
     {
         double k = _overlay.Scale;
         var (left, top, width, height) = PillBounds();
-        var area = DisplayArea.GetFromRect(new RectInt32((int)left, (int)top, Math.Max(1, (int)width), Math.Max(1, (int)height)),
-            DisplayAreaFallback.Nearest).WorkArea;
+        var display = DisplayArea.GetFromRect(new RectInt32((int)left, (int)top, Math.Max(1, (int)width), Math.Max(1, (int)height)),
+            DisplayAreaFallback.Nearest);
+        var area = display.WorkArea;
+        var bounds = display.OuterBounds;
+        var (dx, dy) = IslandPlacement.DisplayPoint(new ScreenRect(left, top, width, height),
+            new ScreenRect(bounds.X, bounds.Y, bounds.Width, bounds.Height));
+        _settings.IslandDisplayX = dx;
+        _settings.IslandDisplayY = dy;
         // The screen it was dropped on decides how wide a line can get.
         _screenWidth = area.Width / k;
         var (x, y) = IslandPlacement.Spot(new ScreenRect(left, top, width, height), new ScreenRect(area.X, area.Y, area.Width, area.Height),

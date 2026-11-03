@@ -57,6 +57,30 @@ public class IslandPlacementTests
         }
     }
 
+    [Theory]
+    [InlineData(0, 0, 1620, 100, 1920, 100)]
+    [InlineData(0, 0, 100, 1006, 100, 1040)]
+    [InlineData(0, 0, 1620, 1006, 1920, 1040)]
+    [InlineData(-1920, -1040, -300, -34, 0, 0)]
+    public void FlushEdgesKeepTheirDisplayAndPlacement(int displayX, int displayY, int left, int top, int edgeX, int edgeY)
+    {
+        var display = new ScreenRect(displayX, displayY, 1920, 1040);
+        var pill = new ScreenRect(left, top, 300, 34);
+        var spot = IslandPlacement.Spot(pill, display, MaxWidth, MaxHeight);
+        Assert.Equal((edgeX, edgeY), spot);
+        var lookup = IslandPlacement.DisplayPoint(pill, display);
+        Assert.InRange(lookup.X, display.Left, display.Right - 1);
+        Assert.InRange(lookup.Y, display.Top, display.Bottom - 1);
+        // Adjacent displays start at the right or bottom edge.
+        Assert.True(lookup.X < display.Right && lookup.Y < display.Bottom);
+        var anchors = IslandPlacement.Anchors(spot.X, spot.Y, display, MaxWidth, MaxHeight);
+        Assert.Equal((pill.Left, pill.Top), IslandPlacement.Origin(spot.X, spot.Y, anchors, pill.Width, pill.Height));
+    }
+
+    [Fact]
+    public void DisplayLookupStaysInsideEvenWhenDraggedPastAnEdge() =>
+        Assert.Equal((1919, 1039), IslandPlacement.DisplayPoint(new(1900, 1030, 300, 34), Screen));
+
     [Fact]
     public void WindowOriginKeepsTheAnchoredEdgeInPlace()
     {

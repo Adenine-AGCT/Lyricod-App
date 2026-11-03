@@ -41,6 +41,11 @@ public static class IslandPlacement
         return ((int)x, (int)y);
     }
 
+    /// <summary>A point inside the owning display, separate from the saved edge used for placement.</summary>
+    public static (int X, int Y) DisplayPoint(ScreenRect pill, ScreenRect display) =>
+        ((int)Math.Clamp(Math.Floor(pill.Left + pill.Width / 2), display.Left, display.Right - 1),
+         (int)Math.Clamp(Math.Floor(pill.Top + pill.Height / 2), display.Top, display.Bottom - 1));
+
     /// <summary>The edges an island saved at (<paramref name="x"/>, <paramref name="y"/>) grows from.</summary>
     public static (IslandAnchorX X, IslandAnchorY Y) Anchors(double x, double y, ScreenRect area, double maxWidth, double maxHeight) =>
         (AnchorX(x, area, maxWidth), y + maxHeight <= area.Bottom ? IslandAnchorY.Top : IslandAnchorY.Bottom);
