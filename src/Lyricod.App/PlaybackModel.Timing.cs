@@ -59,7 +59,8 @@ public sealed partial class PlaybackModel
         System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant(),
         PlayerName, NowPlaying?.AppId, IsPlaying, Track, Lyrics, IsSearching, LyricsPinned,
         SongOffset, _settings.Offset, LastError, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        NowPlaying?.HasTimeline, ArtworkSize, Fonts.DiagnosticsText, UpdateChecker.Kind, IsMusicPlayer, IsSong, BestMatchScore, AutomaticLookupAllowed);
+        NowPlaying?.HasTimeline, ArtworkSize, Fonts.DiagnosticsText, UpdateChecker.Kind, IsMusicPlayer, IsSong, BestMatchScore, AutomaticLookupAllowed,
+        Artwork?.Length, Artwork == null ? null : _artworkWhole);
 
     void WriteDebugState(double position)
     {
