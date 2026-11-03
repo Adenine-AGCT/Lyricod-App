@@ -94,7 +94,7 @@ NetEase Cloud Music generally reports which song is playing but does not provide
 
 For more accurate synchronization, you can use **InfLink-rs**, a third-party plugin that runs through **BetterNCM**. Both are maintained by other developers and change how NetEase Cloud Music runs. Install them only if you are comfortable with that.
 
-The easiest way is through Lyricod: open Settings > General > NetEase Cloud Music sync. Lyricod downloads [a small helper](https://github.com/darkdust-c/Lyricod-CM-Helper) to install BetterNCM and InfLink-rs, and verifies the downloaded files before installation. This option supports 64-bit NetEase Cloud Music 3.x. If you'd rather install them manually:
+The easiest way is through Lyricod: open Settings > General > NetEase Cloud Music sync. Lyricod downloads [a small helper](https://github.com/darkdust-c/Lyricod-CM-Helper) to install BetterNCM and InfLink-rs, and verifies the downloaded files before installation. Windows asks for administrator permission, because NetEase Cloud Music is installed in Program Files. This option supports 64-bit NetEase Cloud Music 3.x. If you'd rather install them manually:
 
 1. Quit NetEase Cloud Music. Download and run `betterncm_installer.exe` from [BetterNCM Installer releases](https://github.com/std-microblock/BetterNCM-Installer/releases/latest).
 2. Open NetEase Cloud Music and install **InfLink-rs** from the BetterNCM plugin store. Alternatively, download `InfLink-rs.plugin` from [InfLink-rs releases](https://github.com/apoint123/inflink-rs/releases/latest) and copy it to `C:\betterncm\plugins`.
