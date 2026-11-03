@@ -170,7 +170,7 @@ sealed class LiquidGlass : IDisposable
         _item.Closed += _itemClosed;
         _poolSize = _item.Size;
         _pool = Direct3D11CaptureFramePool.CreateFreeThreaded(_device, Windows.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized, 3, _poolSize);
-        Action drawNewest = () =>
+        DispatcherQueueHandler drawNewest = () =>
         {
             try
             {
@@ -234,7 +234,7 @@ sealed class LiquidGlass : IDisposable
     internal bool IsCurrent(int generation) => !_disposed && !Failed && generation == Volatile.Read(ref _generation);
 
     /// <summary>Frames arrive on a capture thread; the newest is drawn on the UI thread.</summary>
-    void OnFrameArrived(int generation, Action drawNewest)
+    void OnFrameArrived(int generation, DispatcherQueueHandler drawNewest)
     {
         try
         {
