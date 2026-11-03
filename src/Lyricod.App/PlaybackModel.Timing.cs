@@ -74,6 +74,7 @@ public sealed partial class PlaybackModel
                 meter = Platform.AudioMeter.LastStatus,
                 musicPlayer = IsMusicPlayer, song = IsSong, bestMatchScore = BestMatchScore,
                 automaticLookupAllowed = AutomaticLookupAllowed,
+                artwork = Artwork == null ? null : $"{Artwork.Length} bytes, {(_artworkWhole ? "whole" : "cut short")}",
             }));
         }
         catch (IOException) { }
