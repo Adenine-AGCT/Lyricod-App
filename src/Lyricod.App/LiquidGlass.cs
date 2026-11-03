@@ -57,7 +57,11 @@ sealed class LiquidGlass : IDisposable
     CanvasBitmap? _light;
     (int Width, int Height, float Radius, bool SquareTop, float Rim) _lightFor;
     Look? _look;
-    int _pending;
+    int _pending, _generation;
+    volatile bool _disposed;
+    bool _ownsAffinity;
+    Windows.Foundation.TypedEventHandler<GraphicsCaptureItem, object>? _itemClosed;
+    Windows.Foundation.TypedEventHandler<Direct3D11CaptureFramePool, object>? _frameArrived;
     /// <summary>Until when (<see cref="Environment.TickCount64"/>) new frames are left unused after a freeze.</summary>
     long _skipUntil;
 
@@ -126,7 +130,7 @@ sealed class LiquidGlass : IDisposable
     public void Update(nint monitor, PointInt32 origin, RectInt32 pill, Vector2 size, float radius, bool squareTop,
         float blur, float refraction, Windows.UI.Color tint, bool shine)
     {
-        if (Failed) return;
+        if (_disposed || Failed) return;
         try
         {
             Visual.Size = size;
@@ -146,16 +150,38 @@ sealed class LiquidGlass : IDisposable
     void Start(nint monitor)
     {
         Stop();
+        if (_disposed) return;
+        int generation = Volatile.Read(ref _generation);
         _monitor = monitor;
         _item = ForMonitor(monitor);
-        _item.Closed += (_, _) =>
+        _itemClosed = (_, _) =>
         {
-            try { _ui.TryEnqueue(() => { try { Fail(null); } catch (Exception) { } }); }
+            try
+            {
+                if (!IsCurrent(generation)) return;
+                _ui.TryEnqueue(() =>
+                {
+                    try { if (IsCurrent(generation)) Fail(null); }
+                    catch (Exception) { }
+                });
+            }
             catch (Exception) { }
-        }; // the screen was unplugged
+        };
+        _item.Closed += _itemClosed;
         _poolSize = _item.Size;
         _pool = Direct3D11CaptureFramePool.CreateFreeThreaded(_device, Windows.Graphics.DirectX.DirectXPixelFormat.B8G8R8A8UIntNormalized, 3, _poolSize);
-        _pool.FrameArrived += OnFrameArrived;
+        Action drawNewest = () =>
+        {
+            try
+            {
+                if (!IsCurrent(generation)) return;
+                Interlocked.CompareExchange(ref _pending, 0, generation);
+                DrawNewest();
+            }
+            catch (Exception e) { if (IsCurrent(generation)) Fail(e); }
+        };
+        _frameArrived = (_, _) => OnFrameArrived(generation, drawNewest);
+        _pool.FrameArrived += _frameArrived;
         _session = _pool.CreateCaptureSession(_item);
         _session.IsCursorCaptureEnabled = false;
         Borderless(_session);
@@ -172,7 +198,7 @@ sealed class LiquidGlass : IDisposable
     /// <summary>The legacy screenshot workaround is unnecessary with session-only exclusion.</summary>
     public bool ShowInScreenshots()
     {
-        if (SessionExclusion || Failed) return false;
+        if (_disposed || _session == null || SessionExclusion || Failed) return false;
         try
         {
             Frozen = true; // stop consuming frames before letting capture see this window
@@ -184,7 +210,7 @@ sealed class LiquidGlass : IDisposable
 
     public void EndScreenshot()
     {
-        if (Failed) return;
+        if (_disposed || Failed) return;
         try
         {
             if (!SessionExclusion) SetCaptureAffinity(Win32.WDA_EXCLUDEFROMCAPTURE);
@@ -197,25 +223,30 @@ sealed class LiquidGlass : IDisposable
     {
         // Never run live capture without either exclusion mechanism: that would feed the
         // island back into itself. Failure takes the existing clear-glass fallback instead.
+        if (_disposed) return;
         if (!Win32.SetWindowDisplayAffinity(_window, affinity))
             throw new InvalidOperationException("Could not set the island's capture affinity.");
+        _ownsAffinity = affinity != Win32.WDA_NONE;
     }
 
+    internal int Generation => Volatile.Read(ref _generation);
+
+    internal bool IsCurrent(int generation) => !_disposed && !Failed && generation == Volatile.Read(ref _generation);
+
     /// <summary>Frames arrive on a capture thread; the newest is drawn on the UI thread.</summary>
-    void OnFrameArrived(Direct3D11CaptureFramePool pool, object args)
+    void OnFrameArrived(int generation, Action drawNewest)
     {
         try
         {
-            if (Interlocked.Exchange(ref _pending, 1) == 0 && !_ui.TryEnqueue(DrawNewest))
-                Volatile.Write(ref _pending, 0);
+            if (!IsCurrent(generation) || Interlocked.Exchange(ref _pending, generation) == generation) return;
+            if (!_ui.TryEnqueue(drawNewest)) Interlocked.CompareExchange(ref _pending, 0, generation);
         }
-        catch (Exception) { Volatile.Write(ref _pending, 0); }
+        catch (Exception) { Interlocked.CompareExchange(ref _pending, 0, generation); }
     }
 
     void DrawNewest()
     {
-        Volatile.Write(ref _pending, 0);
-        if (_pool == null || Failed) return;
+        if (_disposed || _pool == null || Failed) return;
         try
         {
             Direct3D11CaptureFrame? newest = null;
@@ -300,7 +331,7 @@ sealed class LiquidGlass : IDisposable
 
     internal void Fail(Exception? e)
     {
-        if (Failed) return;
+        if (_disposed || Failed) return;
         Failed = true;
         try { if (e != null) System.Diagnostics.Debug.WriteLine("liquid glass: " + e); } catch (Exception) { }
         try { Stop(); } catch (Exception) { }
@@ -309,19 +340,32 @@ sealed class LiquidGlass : IDisposable
 
     void Stop()
     {
+        Interlocked.Increment(ref _generation);
+        Interlocked.Exchange(ref _pending, 0);
         _monitor = 0;
         SessionExclusion = false;
+        Frozen = false; // the old session's screenshot timer is retired too
+        var item = _item;
+        var closed = _itemClosed;
+        _item = null;
+        _itemClosed = null;
+        if (item != null && closed != null)
+            try { item.Closed -= closed; } catch (Exception) { }
         DisposeOwned(ref _session);
         var pool = _pool;
         _pool = null;
+        var arrived = _frameArrived;
+        _frameArrived = null;
         if (pool != null)
         {
-            try { pool.FrameArrived -= OnFrameArrived; } catch (Exception) { }
+            try { if (arrived != null) pool.FrameArrived -= arrived; } catch (Exception) { }
             DisposeOwned(ref pool);
         }
         RetireFrame();
-        _item = null;
-        try { Win32.SetWindowDisplayAffinity(_window, Win32.WDA_NONE); } catch (Exception) { }
+        bool resetAffinity = _ownsAffinity;
+        _ownsAffinity = false;
+        if (resetAffinity)
+            try { Win32.SetWindowDisplayAffinity(_window, Win32.WDA_NONE); } catch (Exception) { }
     }
 
     void RetireFrame()
@@ -333,6 +377,8 @@ sealed class LiquidGlass : IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         try { Stop(); } catch (Exception) { }
         DisposeDrawingResources();
     }

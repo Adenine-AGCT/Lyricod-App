@@ -41,19 +41,21 @@ public sealed partial class IslandWindow
             if (_liquid == null)
             {
                 // If it fails later (the graphics card reset, the screen went away), fall back to clear glass.
-                _liquid = new LiquidGlass(ElementCompositionPreview.GetElementVisual(LiquidHost).Compositor, DispatcherQueue, _overlay.Handle,
+                LiquidGlass? created = null;
+                created = new LiquidGlass(ElementCompositionPreview.GetElementVisual(LiquidHost).Compositor, DispatcherQueue, _overlay.Handle,
                     () =>
                     {
                         try
                         {
                             DispatcherQueue.TryEnqueue(() =>
                             {
-                                try { if (!_closed && _liquid?.Failed == true) ApplyTheme(); }
+                                try { if (!_closed && ReferenceEquals(_liquid, created) && created?.Failed == true) ApplyTheme(); }
                                 catch (Exception) { StopLiquid(); }
                             });
                         }
                         catch (Exception) { StopLiquid(); }
                     });
+                _liquid = created;
                 ElementCompositionPreview.SetElementChildVisual(LiquidHost, _liquid.Visual);
             }
             UpdateLiquid();
@@ -77,19 +79,26 @@ public sealed partial class IslandWindow
     {
         try
         {
-            if (_liquid?.ShowInScreenshots() != true) return;
-            if (_screenshotTimer == null)
+            var liquid = _liquid;
+            if (liquid?.ShowInScreenshots() != true) return;
+            var oldTimer = _screenshotTimer;
+            _screenshotTimer = null;
+            try { oldTimer?.Stop(); } catch (Exception) { }
+            var timer = DispatcherQueue.CreateTimer();
+            int generation = liquid.Generation;
+            timer.Interval = TimeSpan.FromSeconds(ScreenshotSeconds);
+            timer.IsRepeating = false;
+            timer.Tick += (_, _) =>
             {
-                _screenshotTimer = DispatcherQueue.CreateTimer();
-                _screenshotTimer.Interval = TimeSpan.FromSeconds(ScreenshotSeconds);
-                _screenshotTimer.IsRepeating = false;
-                _screenshotTimer.Tick += (_, _) =>
+                try
                 {
-                    try { EndScreenshot(); } catch (Exception) { StopLiquid(); }
-                };
-            }
-            _screenshotTimer.Stop();
-            _screenshotTimer.Start();
+                    if (ReferenceEquals(_screenshotTimer, timer) && ReferenceEquals(_liquid, liquid) && liquid.IsCurrent(generation))
+                        EndScreenshot();
+                }
+                catch (Exception) { StopLiquid(); }
+            };
+            _screenshotTimer = timer;
+            timer.Start();
         }
         catch (Exception e) { _liquid?.Fail(e); }
     }
@@ -108,7 +117,9 @@ public sealed partial class IslandWindow
 
     void StopLiquid()
     {
-        try { _screenshotTimer?.Stop(); } catch (Exception) { }
+        var timer = _screenshotTimer;
+        _screenshotTimer = null;
+        try { timer?.Stop(); } catch (Exception) { }
         var liquid = _liquid;
         _liquid = null;
         if (liquid == null) return;
