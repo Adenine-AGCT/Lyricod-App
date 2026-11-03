@@ -90,7 +90,8 @@ public sealed partial class IslandWindow : Window
         _sweep = new SweepPainter(Lyric, LyricSweep) { Effect = settings.IslandEffect };
         _transport = new TransportButtons(model, 13);
         TransportHost.Children.Add(_transport);
-        _progress = new ProgressLine(model);
+        _progress = new ProgressLine(model, hoverPreview: true);
+        _progress.SetInteractionEnabled(false);
         ProgressHost.Children.Add(_progress);
         LyricsButton.Click += (_, _) => openLyrics();
         SettingsButton.Click += (_, _) => openSettings();
@@ -173,6 +174,7 @@ public sealed partial class IslandWindow : Window
             _pieceTimer.Stop();
             _pointerTimer.Stop();
             _progressTimer.Stop();
+            _progress.SetInteractionEnabled(false);
             _barTimer.Stop();
             _revealTimer.Stop();
             _pauseTimer.Stop();
@@ -205,19 +207,31 @@ public sealed partial class IslandWindow : Window
 
     void OnModelChanged(PlaybackModel.Change change)
     {
+        if (_closed) return;
+        bool track = change.HasFlag(PlaybackModel.Change.Track);
+        bool clock = change.HasFlag(PlaybackModel.Change.Clock);
+        if (track) _progress.CancelInteraction();
         UpdatePaused();
-        if (change.HasFlag(PlaybackModel.Change.Track)) UpdateSong();
+        if (track) UpdateSong();
         if (change.HasFlag(PlaybackModel.Change.Artwork)) _ = ApplyArtwork();
-        if (change.HasFlag(PlaybackModel.Change.Track) || change.HasFlag(PlaybackModel.Change.Lyrics) || change.HasFlag(PlaybackModel.Change.Line))
+        if (track || change.HasFlag(PlaybackModel.Change.Lyrics) || change.HasFlag(PlaybackModel.Change.Line))
             Render();
-        else if (change.HasFlag(PlaybackModel.Change.Clock))
-        {
+        else if (clock)
             ShowPiece();
+        if (clock)
+        {
             _transport.Update();
-            _progress.Update();
-            if (_expanded && _model.IsPlaying) _progressTimer.Start(); else _progressTimer.Stop();
             UpdateBars();
         }
+        if (track || clock || change.HasFlag(PlaybackModel.Change.Progress)) UpdateProgress();
+    }
+
+    void UpdateProgress()
+    {
+        if (_closed || !_shown || !_expanded) { _progressTimer.Stop(); return; }
+        _progress.Update();
+        if (_model.IsPlaying && double.IsFinite(_model.Duration) && _model.Duration > 0) _progressTimer.Start();
+        else _progressTimer.Stop();
     }
 
     void OnSettingChanged(object? sender, PropertyChangedEventArgs e)

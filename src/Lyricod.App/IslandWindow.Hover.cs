@@ -84,15 +84,15 @@ public sealed partial class IslandWindow
         if (expand != _expanded)
         {
             _expanded = expand;
+            _progress.SetInteractionEnabled(expand);
             // Keep the lyric in place; the player has its own cover.
             Fade(ArtFrame, expand ? 0 : 1, expand ? 0.18 : 0.28);
             Fade(Bars, expand ? 0 : 1, expand ? 0.18 : 0.28);
             if (expand)
             {
                 Expanded.Visibility = Visibility.Visible;
-                _progress.Update();
+                UpdateProgress();
                 _transport.Update();
-                if (_model.IsPlaying) _progressTimer.Start();
             }
             else _progressTimer.Stop();
             // As on the Mac: the mini player fades in once the pill has mostly grown, and goes at once on collapse.
