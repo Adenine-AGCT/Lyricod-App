@@ -68,7 +68,7 @@ public sealed class Settings : INotifyPropertyChanged, IJsonOnDeserialized
     bool _showIsland = true;
     IslandStyle _islandStyle = IslandStyle.Default;
     bool _islandLocked = true;
-    int? _islandX, _islandY;
+    int? _islandX, _islandY, _islandDisplayX, _islandDisplayY;
     IslandTheme _islandTheme = IslandTheme.Classic;
     int _glassTransparency = 90;
     GlassTint _glassTint = GlassTint.Neutral;
@@ -140,6 +140,9 @@ public sealed class Settings : INotifyPropertyChanged, IJsonOnDeserialized
     /// or null for the top centre.</summary>
     public int? IslandX { get => _islandX; set => Set(ref _islandX, value); }
     public int? IslandY { get => _islandY; set => Set(ref _islandY, value); }
+    /// <summary>A point inside the display it was dropped on; the saved edge may be outside it.</summary>
+    public int? IslandDisplayX { get => _islandDisplayX; set => Set(ref _islandDisplayX, value); }
+    public int? IslandDisplayY { get => _islandDisplayY; set => Set(ref _islandDisplayY, value); }
     public IslandTheme IslandTheme { get => _islandTheme; set => Set(ref _islandTheme, Enum.IsDefined(value) ? value : IslandTheme.Classic); }
     /// <summary>Lyricod Glass: how see-through it is, in percent (10 to 90).</summary>
     public int GlassTransparency { get => _glassTransparency; set => Set(ref _glassTransparency, Math.Clamp(value, 10, 90)); }

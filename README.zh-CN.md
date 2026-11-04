@@ -94,7 +94,7 @@ Lyricod 每天检查一次是否有新版本，可在「设置 > 关于」中关
 
 如需更准确的同步，可以使用 **InfLink-rs** 插件。它需要通过 **BetterNCM** 加载。这两个项目由第三方开发者维护，会修改网易云音乐的运行环境，请自行决定是否安装。
 
-最方便的方法是直接打开 Lyricod 的「设置 > 通用 > 网易云音乐歌词同步」。Lyricod 会下载一个[辅助工具](https://github.com/darkdust-c/Lyricod-CM-Helper)，安装 BetterNCM 和 InfLink-rs，并在安装前校验下载的文件。目前仅支持 64 位网易云音乐 3.x。如果想手动安装，也可以按照下面的步骤操作：
+最方便的方法是直接打开 Lyricod 的「设置 > 通用 > 网易云音乐歌词同步」。Lyricod 会下载一个[辅助工具](https://github.com/darkdust-c/Lyricod-CM-Helper)，安装 BetterNCM 和 InfLink-rs，并在安装前校验下载的文件。由于网易云音乐安装在 Program Files 中，Windows 会请求管理员权限。目前仅支持 64 位网易云音乐 3.x。如果想手动安装，也可以按照下面的步骤操作：
 
 1. 退出网易云音乐，从 [BetterNCM Installer 发布页](https://github.com/std-microblock/BetterNCM-Installer/releases/latest)下载并运行 `betterncm_installer.exe`。
 2. 打开网易云音乐，在 BetterNCM 插件商店中安装 **InfLink-rs**；也可以从 [InfLink-rs 发布页](https://github.com/apoint123/inflink-rs/releases/latest)下载 `InfLink-rs.plugin`，放进 `C:\betterncm\plugins`。
@@ -115,6 +115,10 @@ InfLink-rs 已在网易云音乐 3.1.20 至 3.1.41 和 2.10.13 版本上测试�
 搜索歌词时，Lyricod 会把歌曲标题、歌手和时长发送给网易云音乐、QQ 音乐和 LRCLIB。如果开启「为浏览器和其他应用查找歌词」，浏览器等应用中播放内容的标题、歌手或频道信息也可能用于歌词搜索。可以在「设置 > 歌词」中关闭这一功能。除此之外，Lyricod 不会发送你观看或浏览内容的其他信息。
 
 歌词岛的音量条通过 Windows 音频接口读取当前播放器的音频信息。Lyricod 不会录制、保存或上传音频。可以在「设置 > 歌词岛」中关闭音量条跟随音乐的功能。
+
+Lyricod Glass 的「液态」效果会读取歌词岛背后的屏幕区域来绘制玻璃效果。这些画面只在你的电脑上使用，不会保存或上传。如需关闭，可以在「设置 > 歌词岛」中选择「透明」或「毛玻璃」效果，或使用「经典」样式。
+
+只有在你选择设置网易云音乐同步时，Lyricod 才会从 GitHub 下载 Lyricod CM Helper；该工具随后会从 BetterNCM 和 InfLink-rs 各自的发布页面下载它们。
 
 自动检查更新会每天访问一次 GitHub，可在「设置 > 关于」中关闭。
 

@@ -147,4 +147,13 @@ public class NeteaseSyncTests
         Assert.Equal(0x014C, NeteaseSync.Machine(Exe(0x014C)));
         Assert.Equal(0, NeteaseSync.Machine(new MemoryStream("not an exe, just text long enough to have a header slot"u8.ToArray())));
     }
+
+    [Fact]
+    public void OnlyTheReviewedHelperRuns()
+    {
+        Assert.False(NeteaseSync.IsPinned(NeteaseSync.FindHelper(Release())!));
+        var reviewed = NeteaseSync.FindHelper(Release(digest: "sha256:" + NeteaseSync.HelperSha256.ToUpperInvariant()));
+        Assert.True(NeteaseSync.IsPinned(reviewed!));
+        Assert.EndsWith("/releases/tags/" + NeteaseSync.HelperVersion, NeteaseSync.HelperEndpoint);
+    }
 }

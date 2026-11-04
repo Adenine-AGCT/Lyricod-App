@@ -78,14 +78,19 @@ public sealed partial class SettingsWindow : Window
         Fonts.Changed += OnFontsChanged;
         Closed += (_, _) =>
         {
-            _fontClosed = true;
-            try { _fontDownload?.Cancel(); } catch (ObjectDisposedException) { }
-            Fonts.Changed -= OnFontsChanged;
-            StopRecording();
-            _updates.Changed -= Refresh;
-            _shortcuts.Changed -= RefreshShortcuts;
-            _settings.PropertyChanged -= OnSettingChanged;
-            _model.Changed -= OnModelChanged;
+            try
+            {
+                DetachNeteasePage();
+                _fontClosed = true;
+                try { _fontDownload?.Cancel(); } catch (ObjectDisposedException) { }
+                Fonts.Changed -= OnFontsChanged;
+                StopRecording();
+                _updates.Changed -= Refresh;
+                _shortcuts.Changed -= RefreshShortcuts;
+                _settings.PropertyChanged -= OnSettingChanged;
+                _model.Changed -= OnModelChanged;
+            }
+            catch (Exception) { /* the window is already closing */ }
         };
         Show(pane);
     }
@@ -118,25 +123,30 @@ public sealed partial class SettingsWindow : Window
 
     void OnPaneChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        if (args.SelectedItem is not NavigationViewItem { Tag: SettingsPane pane }) return;
-        StopRecording();
-        _fontRefresh = null;
-        _watchers.Clear();
-        _songWatchers.Clear();
-        Page.Children.Clear();
-        Scroller.ChangeView(null, 0, null, disableAnimation: true);
-        if (pane != SettingsPane.About)
-            Page.Children.Add(new TextBlock { Text = PaneTitle(pane), Style = Style("TitleTextBlockStyle"), Margin = new Thickness(1, 16, 0, 12) });
-        switch (pane)
+        try
         {
-            case SettingsPane.General: General(); break;
-            case SettingsPane.Desktop: Desktop(); break;
-            case SettingsPane.Island: Island(); break;
-            case SettingsPane.LyricsWindow: LyricsWindowPane(); break;
-            case SettingsPane.Lyrics: Lyrics(); break;
-            case SettingsPane.Shortcuts: Shortcuts(); break;
-            default: About(); break;
+            if (args.SelectedItem is not NavigationViewItem { Tag: SettingsPane pane }) return;
+            DetachNeteasePage();
+            StopRecording();
+            _fontRefresh = null;
+            _watchers.Clear();
+            _songWatchers.Clear();
+            Page.Children.Clear();
+            Scroller.ChangeView(null, 0, null, disableAnimation: true);
+            if (pane != SettingsPane.About)
+                Page.Children.Add(new TextBlock { Text = PaneTitle(pane), Style = Style("TitleTextBlockStyle"), Margin = new Thickness(1, 16, 0, 12) });
+            switch (pane)
+            {
+                case SettingsPane.General: General(); break;
+                case SettingsPane.Desktop: Desktop(); break;
+                case SettingsPane.Island: Island(); break;
+                case SettingsPane.LyricsWindow: LyricsWindowPane(); break;
+                case SettingsPane.Lyrics: Lyrics(); break;
+                case SettingsPane.Shortcuts: Shortcuts(); break;
+                default: About(); break;
+            }
         }
+        catch (Exception) { DetachNeteasePage(); }
     }
 
     void OnSettingChanged(object? sender, PropertyChangedEventArgs e)

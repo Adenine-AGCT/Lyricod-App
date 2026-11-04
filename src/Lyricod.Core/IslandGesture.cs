@@ -32,8 +32,9 @@ public static class IslandGesture
             double pullX = Math.Abs(end.X - c.X), pullY = Math.Abs(end.Y - c.Y);
             if (pullY < pull || pullX > Math.Max(slack, pullY)) continue;
             // ...over the island: it passes through the island's height within its width.
-            bool over = Math.Max(c.X, end.X) >= island.Left && Math.Min(c.X, end.X) <= island.Left + island.Width
-                && Math.Max(c.Y, end.Y) >= island.Top && Math.Min(c.Y, end.Y) <= island.Top + island.Height;
+            bool over = false;
+            for (int i = corner; i < path.Count - 1 && !over; i++)
+                over = Crosses(path[i], path[i + 1], island, slack);
             if (!over) continue;
             // Before it, the sweep: far enough sideways while staying roughly level.
             for (int start = corner - 1; start >= 0; start--)
@@ -44,4 +45,23 @@ public static class IslandGesture
         }
         return false;
     }
+
+    static bool Crosses((double X, double Y) a, (double X, double Y) b,
+        (double Left, double Top, double Width, double Height) island, double slack)
+    {
+        double enter = 0, leave = 1;
+        return Clip(a.X, b.X, island.Left - slack, island.Left + island.Width + slack)
+            && Clip(a.Y, b.Y, island.Top - slack, island.Top + island.Height + slack);
+
+        bool Clip(double from, double to, double min, double max)
+        {
+            double delta = to - from;
+            if (delta == 0) return from >= min && from <= max;
+            double first = (min - from) / delta, last = (max - from) / delta;
+            enter = Math.Max(enter, Math.Min(first, last));
+            leave = Math.Min(leave, Math.Max(first, last));
+            return enter <= leave;
+        }
+    }
+
 }

@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Security.Cryptography;
 using Lyricod.Core;
 using Microsoft.Win32;
 
@@ -12,14 +11,10 @@ public sealed record NeteaseInstall(string Folder, Version Version, bool Is64Bit
     public string Exe => Path.Combine(Folder, NeteaseSetup.ExeName);
 }
 
-public enum NeteaseStage { Downloading, WaitingForPermission }
-
-public enum NeteaseResult { Done, Cancelled, CouldntDownload, Failed }
-
 /// <summary>
 /// Sets up NetEase Cloud Music sync through Lyricod CM Helper (see <see cref="NeteaseSync"/>): downloads
-/// the helper from its latest release, checks it against the SHA-256 GitHub lists, runs it as
-/// administrator, then opens NetEase Cloud Music again if it was open.
+/// the release of the helper this Lyricod was made with, checks it against the SHA-256 Lyricod expects
+/// (which GitHub must list too), runs it as administrator, then opens NetEase Cloud Music again if it was open.
 /// </summary>
 public static class NeteaseSetup
 {
@@ -27,23 +22,21 @@ public static class NeteaseSetup
     const string LoaderName = "msimg32.dll";
 
     /// <summary>The installed NetEase Cloud Music, or null when there's none Lyricod can find.</summary>
-    public static NeteaseInstall? Find()
+    public static NeteaseInstall? Find() => NeteaseSync.FindInstallation(
+        [() => AppPath(RegistryHive.LocalMachine, RegistryView.Registry64),
+         () => AppPath(RegistryHive.LocalMachine, RegistryView.Registry32),
+         () => AppPath(RegistryHive.CurrentUser, RegistryView.Default), RunningFolder], ReadInstall);
+
+    static NeteaseInstall? ReadInstall(string folder)
     {
-        try
-        {
-            string? folder = AppPath(RegistryHive.LocalMachine, RegistryView.Registry64) ?? AppPath(RegistryHive.LocalMachine, RegistryView.Registry32)
-                ?? AppPath(RegistryHive.CurrentUser, RegistryView.Default) ?? RunningFolder();
-            if (folder == null) return null;
-            string exe = Path.Combine(folder, ExeName);
-            if (!File.Exists(exe)) return null;
-            var info = FileVersionInfo.GetVersionInfo(exe);
-            var version = new Version(info.FileMajorPart, info.FileMinorPart, info.FileBuildPart);
-            bool is64Bit;
-            using (var file = File.OpenRead(exe)) is64Bit = NeteaseSync.Machine(file) == NeteaseSync.X64;
-            bool installed = File.Exists(Path.Combine(folder, LoaderName)) && NeteaseSync.HasInfLink(DataFolder());
-            return new NeteaseInstall(folder, version, is64Bit, installed);
-        }
-        catch (Exception) { return null; }
+        string exe = Path.Combine(folder, ExeName);
+        if (!File.Exists(exe)) return null;
+        var info = FileVersionInfo.GetVersionInfo(exe);
+        var version = new Version(info.FileMajorPart, info.FileMinorPart, info.FileBuildPart);
+        bool is64Bit;
+        using (var file = File.OpenRead(exe)) is64Bit = NeteaseSync.Machine(file) == NeteaseSync.X64;
+        bool installed = File.Exists(Path.Combine(folder, LoaderName)) && NeteaseSync.HasInfLink(DataFolder());
+        return new NeteaseInstall(folder, version, is64Bit, installed);
     }
 
     /// <summary>Where installers register cloudmusic.exe (32-bit installers under the 32-bit view).</summary>
@@ -95,22 +88,24 @@ public static class NeteaseSetup
         try
         {
             progress.Report(NeteaseStage.Downloading);
-            string? helper = await DownloadHelperAsync(work.FullName);
-            if (helper == null) return (NeteaseResult.CouldntDownload, null);
-
-            progress.Report(NeteaseStage.WaitingForPermission);
-            bool wasOpen = IsOpen();
+            bool wasOpen;
             string result = Path.Combine(work.FullName, "result.json");
-            var start = new ProcessStartInfo(helper)
-            {
-                UseShellExecute = true,
-                Verb = "runas",
-                Arguments = NeteaseSync.Arguments(remove, netease.Folder, DataFolder(), result),
-                WorkingDirectory = work.FullName,
-            };
             Process? process;
-            try { process = Process.Start(start); }
-            catch (Win32Exception e) when (e.NativeErrorCode == 1223) { return (NeteaseResult.Cancelled, null); } // ERROR_CANCELLED: said no
+            using (var helper = await DownloadHelperAsync(work.FullName))
+            {
+                if (helper == null) return (NeteaseResult.CouldntDownload, null);
+                progress.Report(NeteaseStage.WaitingForPermission);
+                wasOpen = IsOpen();
+                var start = new ProcessStartInfo(helper.Name)
+                {
+                    UseShellExecute = true,
+                    Verb = "runas",
+                    Arguments = NeteaseSync.Arguments(remove, netease.Folder, DataFolder(), result),
+                    WorkingDirectory = work.FullName,
+                };
+                try { process = Process.Start(start); }
+                catch (Win32Exception e) when (e.NativeErrorCode == 1223) { return (NeteaseResult.Cancelled, null); } // ERROR_CANCELLED: said no
+            } // keep the verified file locked until the elevated launch returns
             if (process == null) return (NeteaseResult.Failed, "The helper didn't start.");
             int exitCode;
             using (process)
@@ -142,8 +137,8 @@ public static class NeteaseSetup
         return processes.Length > 0;
     }
 
-    /// <summary>The helper from its latest release, checked against its SHA-256; null when it can't be had or doesn't match.</summary>
-    static async Task<string?> DownloadHelperAsync(string folder)
+    /// <summary>The pinned helper, verified and held against writes and deletion until it starts.</summary>
+    static async Task<FileStream?> DownloadHelperAsync(string folder)
     {
         try
         {
@@ -152,7 +147,8 @@ public static class NeteaseSetup
             using var request = new HttpRequestMessage(HttpMethod.Get, NeteaseSync.HelperEndpoint);
             request.Headers.Accept.ParseAdd("application/vnd.github+json");
             using var reply = await http.SendAsync(request);
-            if (!reply.IsSuccessStatusCode || NeteaseSync.FindHelper(await reply.Content.ReadAsStringAsync()) is not { } helper) return null;
+            if (!reply.IsSuccessStatusCode || NeteaseSync.FindHelper(await reply.Content.ReadAsStringAsync()) is not { } helper
+                || !NeteaseSync.IsPinned(helper)) return null;
             string path = Path.Combine(folder, NeteaseSync.HelperName);
             using (var response = await http.GetAsync(helper.Url, HttpCompletionOption.ResponseHeadersRead))
             {
@@ -163,13 +159,7 @@ public static class NeteaseSetup
                 await using var file = File.Create(path);
                 await body.CopyToAsync(file);
             }
-            await using (var file = File.OpenRead(path))
-            {
-                if (file.Length != helper.Size) return null;
-                string hash = Convert.ToHexString(await SHA256.HashDataAsync(file));
-                if (!hash.Equals(helper.Sha256, StringComparison.OrdinalIgnoreCase)) return null;
-            }
-            return path;
+            return await NeteaseSync.OpenVerifiedHelperAsync(path, helper.Size, helper.Sha256);
         }
         catch (Exception) { return null; } // offline, GitHub unreachable, or a cut-off download
     }

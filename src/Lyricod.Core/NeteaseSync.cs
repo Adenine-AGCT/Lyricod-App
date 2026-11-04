@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace Lyricod.Core;
@@ -18,9 +19,48 @@ public sealed record NeteaseHelperOutcome(bool Ok, string? Error);
 public static class NeteaseSync
 {
     public const string HelperRepository = "darkdust-c/Lyricod-CM-Helper";
-    public const string HelperEndpoint = "https://api.github.com/repos/" + HelperRepository + "/releases/latest";
+
+    /// <summary>
+    /// The helper runs as administrator, so Lyricod only runs the version reviewed for this release of
+    /// Lyricod, by its tag and SHA-256: a new release of the helper reaches people with a new Lyricod,
+    /// never on its own (and a changed file under the same tag is refused).
+    /// </summary>
+    public const string HelperVersion = "v1.0.1";
+    public const string HelperSha256 = "76198fa2ee2cc372c1f07f7ca940ccc826e00b370699c871b2b40ed34fab20d8";
+    public const string HelperEndpoint = "https://api.github.com/repos/" + HelperRepository + "/releases/tags/" + HelperVersion;
     public const string HelperName = "Lyricod-CM-Helper.exe";
     public const string HelperPage = "https://github.com/" + HelperRepository;
+
+    /// <summary>Verifies the helper without releasing its read-only lock; the caller owns the returned handle.</summary>
+    public static async Task<FileStream?> OpenVerifiedHelperAsync(string path, long size, string sha256)
+    {
+        FileStream? file = null;
+        try
+        {
+            file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (file.Length != size) return null;
+            string hash = Convert.ToHexString(await SHA256.HashDataAsync(file));
+            if (!hash.Equals(sha256, StringComparison.OrdinalIgnoreCase)) return null;
+            var verified = file;
+            file = null; // the caller keeps it open through Process.Start
+            return verified;
+        }
+        finally { file?.Dispose(); }
+    }
+
+    /// <summary>The first installation whose executable can be read, in discovery order.</summary>
+    public static T? FindInstallation<T>(IEnumerable<Func<string?>> candidates, Func<string, T?> read) where T : class
+    {
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                if (candidate() is { } folder && read(folder) is { } install) return install;
+            }
+            catch (Exception) { /* a stale or unreadable registration; try the next one */ }
+        }
+        return null;
+    }
 
     /// <summary>The NetEase Cloud Music versions sync has been tested with (3.x).</summary>
     public static readonly Version TestedFrom = new(3, 1, 20), TestedTo = new(3, 1, 42);
@@ -60,6 +100,9 @@ public static class NeteaseSync
         }
         catch (JsonException) { return null; }
     }
+
+    /// <summary>Whether this is the helper Lyricod was released with (see <see cref="HelperSha256"/>).</summary>
+    public static bool IsPinned(NeteaseHelperFile helper) => helper.Sha256.Equals(HelperSha256, StringComparison.OrdinalIgnoreCase);
 
     static string? Text(JsonElement element, string property) =>
         element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;

@@ -119,7 +119,7 @@
   <data name="GlassEffectLiquid" xml:space="preserve"><value>Liquid</value></data>
   <data name="GlassEffectClearDetail" xml:space="preserve"><value>Shows what's behind the island without blurring it.</value></data>
   <data name="GlassEffectFrostedDetail" xml:space="preserve"><value>Blurs the background using Windows acrylic. The corners may look slightly jagged.</value></data>
-  <data name="GlassEffectLiquidDetail" xml:space="preserve"><value>Adds a slight blur and refracted edges to the background. The island won't appear in screenshots, recordings or screen sharing while this is on.</value></data>
+  <data name="GlassEffectLiquidDetail" xml:space="preserve"><value>Adds a slight blur and refracted edges to the background, drawn from the part of the screen behind the island. On older Windows 11 builds, the island doesn't appear in screenshots, recordings or screen sharing while this is on.</value></data>
   <data name="GlassEffectUnsupported" xml:space="preserve"><value>This Windows version doesn't support the selected effect. Clear will be used instead.</value></data>
   <data name="LiquidBlur" xml:space="preserve"><value>Blur</value></data>
   <data name="LiquidRefraction" xml:space="preserve"><value>Edge refraction</value></data>

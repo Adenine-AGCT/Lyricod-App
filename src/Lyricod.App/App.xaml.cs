@@ -66,6 +66,7 @@ public partial class App : Application
         var overrides = new TrackOverrides(Path.Combine(Settings.DataDir, "song-overrides.json"));
         _model = new PlaybackModel(DispatcherQueue.GetForCurrentThread(), new MediaSession(), provider,
             new Romanizer(JapaneseReader.IsAvailable ? new JapaneseReader() : null), overrides, _settings);
+        PlaybackModel.DebugGlass = () => GlassCaptureDiagnostics;
         _desktop = new DesktopLyricsWindow(_model, _settings);
         _shortcuts = new GlobalShortcuts(_desktop, _settings, PerformShortcut);
         _island = new IslandWindow(_model, _settings, OpenLyricsWindow, () => OpenSettings());

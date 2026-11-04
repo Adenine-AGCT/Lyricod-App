@@ -65,6 +65,24 @@ public class IslandGestureTests
         Assert.False(Opens(Docked, (400, 10), (460, 10), (520, 12), (522, 40), (523, 60)));
 
     [Fact]
+    public void APullWhoseBoundingBoxOverlapsButWhoseSegmentsMissDoesNotOpen() =>
+        Assert.False(Opens(Docked, (400, 10), (320, 10), (280, 100)));
+
+    [Fact]
+    public void APullWhoseChordCrossesButWhoseSegmentsMissDoesNotOpen() =>
+        Assert.False(Opens(Floating, (200, 80), (280, 80), (320, 80), (320, 160)));
+
+    [Fact]
+    public void ACurvedPullUsesItsSegmentsEvenWhenItsChordMisses() =>
+        Assert.True(Opens(Floating, (400, 80), (320, 80), (295, 120), (320, 160)));
+
+    [Theory]
+    [InlineData(305, true)]
+    [InlineData(307, false)]
+    public void ThePullKeepsTheSixPixelTolerance(double x, bool opens) =>
+        Assert.Equal(opens, Opens(Docked, (x - 60, 10), (x, 10), (x, 60)));
+
+    [Fact]
     public void DistancesGrowWithTheDisplayScale()
     {
         (double, double)[] path = [(150, 10), (200, 10), (204, 30), (205, 46)]; // 50 sideways, 36 down

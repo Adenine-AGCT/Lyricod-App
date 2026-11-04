@@ -13,7 +13,39 @@ namespace Lyricod;
 public sealed partial class SettingsWindow
 {
     /// <summary>A setup is running; one at a time, whichever page started it.</summary>
-    static bool _neteaseBusy;
+    static readonly NeteaseSetupState NeteaseState = new();
+    Action? _neteaseRefresh;
+
+    void DetachNeteasePage()
+    {
+        if (_neteaseRefresh != null) NeteaseState.Changed -= _neteaseRefresh;
+        _neteaseRefresh = null;
+        _neteaseFold = null;
+    }
+
+    static async void RunNeteaseSetup(NeteaseInstall netease, bool removing)
+    {
+        int? operation = null;
+        (NeteaseResult Result, string? Error) outcome = (NeteaseResult.Failed, null);
+        try
+        {
+            operation = NeteaseState.Start(removing);
+            if (operation == null) return;
+            int current = operation.Value;
+            var progress = new Progress<NeteaseStage>(stage =>
+            {
+                try { NeteaseState.Report(current, stage); } catch (Exception) { }
+            });
+            outcome = await NeteaseSetup.RunAsync(netease, removing, progress);
+        }
+        catch (Exception e) { outcome = (NeteaseResult.Failed, e.Message); }
+        finally
+        {
+            try { if (operation is int current) NeteaseState.Complete(current, outcome); }
+            catch (Exception) { }
+        }
+    }
+
     /// <summary>The section on the page that's up, and whether to open it when the page is built.</summary>
     Expander? _neteaseFold;
     bool _openNeteaseSync;
@@ -32,15 +64,28 @@ public sealed partial class SettingsWindow
         _openNeteaseSync = false;
         fold.IsExpanded = true;
         // Scrolled to once it's on screen (a window just opened shows it a moment later).
-        void Reveal() => DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            () => fold.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0, AnimationDesired = true }));
+        void Reveal()
+        {
+            try
+            {
+                DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+                {
+                    try
+                    {
+                        if (ReferenceEquals(_neteaseFold, fold))
+                            fold.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0, AnimationDesired = true });
+                    }
+                    catch (Exception) { }
+                });
+            }
+            catch (Exception) { }
+        }
         if (fold.IsLoaded) Reveal();
         else
         {
             void Loaded(object sender, RoutedEventArgs e)
             {
-                fold.Loaded -= Loaded;
-                Reveal();
+                try { fold.Loaded -= Loaded; Reveal(); } catch (Exception) { }
             }
             fold.Loaded += Loaded;
         }
@@ -73,53 +118,44 @@ public sealed partial class SettingsWindow
         if (_openNeteaseSync) OpenNeteaseFold(fold);
         if (status is not { } line) return;
 
-        // The last setup's outcome, shown until NetEase Cloud Music shows sync working.
-        string? result = null;
-
         void Show()
         {
-            // NetEase Cloud Music playing and saying where it is: sync works, however it was set up.
-            bool working = _model.NowPlaying is { HasTimeline: true } now && MusicPlayers.IsNetease(now.AppId);
-            install.Content = L.Get(netease.SyncInstalled ? "NeteaseSyncUpdate" : "NeteaseSyncInstall");
-            install.Visibility = working ? Visibility.Collapsed : Visibility.Visible;
-            remove.Visibility = netease.SyncInstalled ? Visibility.Visible : Visibility.Collapsed;
-            install.IsEnabled = remove.IsEnabled = !_neteaseBusy;
-            if (_neteaseBusy) return; // the progress shows meanwhile
-            line.Text = working ? L.Get("NeteaseSyncWorking")
-                : result ?? L.Get(netease.SyncInstalled ? "NeteaseSyncInstalled" : "NeteaseSyncNotInstalled");
-        }
-
-        async void Run(bool removing)
-        {
-            if (_neteaseBusy) return;
-            _neteaseBusy = true;
-            Show();
-            var progress = new Progress<NeteaseStage>(stage =>
-            {
-                try { line.Text = L.Get(stage == NeteaseStage.Downloading ? "NeteaseSyncDownloading" : "NeteaseSyncWaiting"); }
-                catch (Exception) { /* the window closed meanwhile */ }
-            });
-            (NeteaseResult Result, string? Error) outcome;
-            try { outcome = await NeteaseSetup.RunAsync(netease, removing, progress); }
-            catch (Exception e) { outcome = (NeteaseResult.Failed, e.Message); }
-            finally { _neteaseBusy = false; }
             try
             {
-                netease = NeteaseSetup.Find() ?? netease;
-                result = outcome.Result switch
+                bool working = _model.NowPlaying is { HasTimeline: true } now && MusicPlayers.IsNetease(now.AppId);
+                install.Content = L.Get(netease.SyncInstalled ? "NeteaseSyncUpdate" : "NeteaseSyncInstall");
+                install.Visibility = working ? Visibility.Collapsed : Visibility.Visible;
+                remove.Visibility = netease.SyncInstalled ? Visibility.Visible : Visibility.Collapsed;
+                install.IsEnabled = remove.IsEnabled = !NeteaseState.Busy;
+                string? result = NeteaseState.Outcome is { } outcome ? outcome.Result switch
                 {
-                    NeteaseResult.Done => L.Get(removing ? "NeteaseSyncRemoved" : "NeteaseSyncDone"),
+                    NeteaseResult.Done => L.Get(NeteaseState.Removing ? "NeteaseSyncRemoved" : "NeteaseSyncDone"),
                     NeteaseResult.Cancelled => L.Get("NeteaseSyncCancelled"),
                     NeteaseResult.CouldntDownload => L.Get("NeteaseSyncCouldntDownload"),
                     _ => L.Format("NeteaseSyncFailed", outcome.Error ?? ""),
-                };
-                Show();
+                } : null;
+                line.Text = NeteaseState.Busy
+                    ? L.Get(NeteaseState.Stage == NeteaseStage.Downloading ? "NeteaseSyncDownloading" : "NeteaseSyncWaiting")
+                    : working ? L.Get("NeteaseSyncWorking")
+                    : result ?? L.Get(netease.SyncInstalled ? "NeteaseSyncInstalled" : "NeteaseSyncNotInstalled");
             }
-            catch (Exception) { /* the window closed meanwhile */ }
+            catch (Exception) { /* the page closed meanwhile */ }
         }
 
-        install.Click += (_, _) => Run(removing: false);
-        remove.Click += (_, _) => Run(removing: true);
+        install.Click += (_, _) => { try { RunNeteaseSetup(netease, removing: false); } catch (Exception) { } };
+        remove.Click += (_, _) => { try { RunNeteaseSetup(netease, removing: true); } catch (Exception) { } };
+        void RefreshSetup()
+        {
+            try
+            {
+                if (!NeteaseState.Busy) netease = NeteaseSetup.Find() ?? netease;
+                Show();
+            }
+            catch (Exception) { /* the page closed meanwhile */ }
+        }
+
+        _neteaseRefresh = RefreshSetup;
+        NeteaseState.Changed += RefreshSetup;
         _songWatchers.Add(Show); // follows NetEase Cloud Music starting or stopping
         Show();
     }

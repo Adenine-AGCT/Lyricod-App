@@ -190,19 +190,27 @@ public sealed partial class SettingsWindow
         void Show() => button.Content = left > 0 ? L.Format("LiquidScreenshotCountdown", left) : L.Get("LiquidScreenshotButton");
         timer.Tick += (_, _) =>
         {
-            left--;
-            if (left <= 0) timer.Stop();
-            Show();
+            try
+            {
+                left--;
+                if (left <= 0) timer.Stop();
+                Show();
+            }
+            catch (Exception) { /* the page closed meanwhile */ }
         };
         button.Click += (_, _) =>
         {
-            ShowIslandInScreenshots?.Invoke();
-            left = IslandWindow.ScreenshotSeconds;
-            timer.Stop();
-            timer.Start();
-            Show();
+            try
+            {
+                ShowIslandInScreenshots?.Invoke();
+                left = IslandWindow.ScreenshotSeconds;
+                timer.Stop();
+                timer.Start();
+                Show();
+            }
+            catch (Exception) { /* the page closed meanwhile */ }
         };
-        button.Unloaded += (_, _) => timer.Stop();
+        button.Unloaded += (_, _) => { try { timer.Stop(); } catch (Exception) { } };
         return button;
     }
 

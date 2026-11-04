@@ -71,6 +71,12 @@ public sealed partial class PlaybackModel
     readonly DispatcherQueueTimer _lineTimer;
     readonly DispatcherQueueTimer _safetyPoll;
     readonly DispatcherQueueTimer _artworkRetry;
+    /// <summary>Reads a cover that came cut short again, 1.5 s on (see <see cref="LoadArtwork"/>).</summary>
+    readonly DispatcherQueueTimer _artworkWait;
+    /// <summary>The cover shown came whole.</summary>
+    bool _artworkWhole;
+    /// <summary>When the cover came cut short, waiting for it whole (<see cref="Environment.TickCount64"/>; 0 when not waiting).</summary>
+    long _artworkCutSince;
     /// <summary>Everything the source returned, with pronunciation worked out.</summary>
     Lyrics? _allLyrics;
     CancellationTokenSource? _loading;
@@ -113,7 +119,11 @@ public sealed partial class PlaybackModel
         _artworkRetry = ui.CreateTimer();
         _artworkRetry.Interval = TimeSpan.FromSeconds(20);
         _artworkRetry.IsRepeating = false;
-        _artworkRetry.Tick += (_, _) => { if (Artwork == null && NowPlaying is { } n) LoadArtwork(n.TrackId); };
+        _artworkRetry.Tick += (_, _) => { if ((Artwork == null || !_artworkWhole) && NowPlaying is { } n) LoadArtwork(n.TrackId); };
+        _artworkWait = ui.CreateTimer();
+        _artworkWait.Interval = TimeSpan.FromSeconds(1.5);
+        _artworkWait.IsRepeating = false;
+        _artworkWait.Tick += (_, _) => { if (NowPlaying is { } n) LoadArtwork(n.TrackId); };
         _media.Changed += OnMediaChanged;
         _media.DetailsChanged += OnMediaDetailsChanged;
         _settings.PropertyChanged += OnSettingChanged;
@@ -138,6 +148,7 @@ public sealed partial class PlaybackModel
         _lineTimer.Stop();
         _safetyPoll.Stop();
         _artworkRetry.Stop();
+        _artworkWait.Stop();
         _loading?.Cancel();
         _settings.PropertyChanged -= OnSettingChanged;
         _media.Changed -= OnMediaChanged;
@@ -190,7 +201,7 @@ public sealed partial class PlaybackModel
             if (NowPlaying != null)
             {
                 NowPlaying = null; Track = null; Lyrics = null; _allLyrics = null; CurrentIndex = null;
-                Artwork = null; ArtworkColor = null; ArtworkSize = null;
+                Artwork = null; ArtworkColor = null; ArtworkSize = null; _artworkWhole = false; _artworkCutSince = 0;
                 _loading?.Cancel();
                 BestMatchScore = null;
                 IsSearching = false; // the cancelled search won't say it's done
@@ -203,6 +214,7 @@ public sealed partial class PlaybackModel
             }
             _safetyPoll.Stop();
             _artworkRetry.Stop();
+            _artworkWait.Stop();
             Finish(change);
             return;
         }
@@ -223,6 +235,8 @@ public sealed partial class PlaybackModel
             ApplyOffset();
             LoadLyrics(Track, ignoreCache: false);
             Artwork = null; ArtworkColor = null; ArtworkSize = null; _artworkTries = 0;
+            _artworkWhole = false; _artworkCutSince = 0;
+            _artworkWait.Stop();
             _artworkRetry.Stop();
             _artworkRetry.Start();
             _lengthCorrected = false;

@@ -99,6 +99,16 @@ public class DiagnosticsTests
     }
 
     [Fact]
+    public void SaysHowBigTheCoverIsAndWhetherItCameWhole()
+    {
+        string Cover(long bytes, bool whole) => Diagnostics.Text("dev", "Windows", "x64", "NetEase", "cloudmusic.exe", true,
+            new Track { Title = "Song", Artist = "Artist" }, null, false, false, 0, 0, cover: (3000, 3000), coverBytes: bytes, coverWhole: whole);
+        Assert.Contains("Cover: 3000×3000 px · 2.5 MB · whole\n", Cover(2_621_440, true));
+        Assert.Contains("Cover: 3000×3000 px · 60 KB · cut short\n", Cover(61_440, false));
+        Assert.Contains("Cover: 3000×3000 px · 1 KB · whole\n", Cover(10, true));
+    }
+
+    [Fact]
     public void LeavesTheUserNameOutOfPaths()
     {
         string text = Diagnostics.Text("dev", "Windows", "x64", "Player", @"C:\Users\Ann\Apps\player.exe", true, null, null, false, false, 0, 0,
