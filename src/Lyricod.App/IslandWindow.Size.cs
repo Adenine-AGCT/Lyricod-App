@@ -58,7 +58,6 @@ public sealed partial class IslandWindow
     /// <summary>Fits the displayed text, keeping room for the mini player while expanded.</summary>
     void Resize()
     {
-        if (_closed || !_shown) return;
         double required = _textWidth + 2 * SideWidth;
         double width = _expanded ? Math.Max(required, ExpandedMinWidth) : required;
         double height = RowHeight + (HasSecondRow ? SecondHeight : 0) + (_expanded ? ExpandedHeight : 0);
@@ -150,7 +149,6 @@ public sealed partial class IslandWindow
 
     void RevealText()
     {
-        if (_closed || !_shown) return;
         LyricBox.Opacity = 1;
         Second.Opacity = _secondOpacity;
         if (_transitionPending)

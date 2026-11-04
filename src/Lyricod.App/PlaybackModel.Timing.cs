@@ -22,7 +22,7 @@ public sealed partial class PlaybackModel
 
     void EditSongOffset(Action<TrackOverride> edit)
     {
-        if (!TryApplyPendingDuration() || Track is not { } t) return;
+        if (Track is not { } t) return;
         if (TrySaveSongChoice(t, edit)) ApplyOffset();
     }
 

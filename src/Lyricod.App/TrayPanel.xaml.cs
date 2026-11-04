@@ -199,9 +199,7 @@ public sealed partial class TrayPanel : Window
             ThisSong.Opacity = track != null ? 1 : 0.5;
             LyricsRow.IsEnabled = EarlierButton.IsEnabled = LaterButton.IsEnabled = track != null;
             var status = LyricsStatusText();
-            bool statusChanged = LyricsStatus.Text != status || SaveErrorText.Text != (_model.SongSaveError ?? "");
-            SaveErrorText.Text = _model.SongSaveError ?? "";
-            SaveErrorText.Visibility = _model.SongSaveError != null ? Visibility.Visible : Visibility.Collapsed;
+            bool statusChanged = LyricsStatus.Text != status;
             LyricsStatus.Text = status;
             LyricsStatus.TextWrapping = _model.IsNotSong ? TextWrapping.Wrap : TextWrapping.NoWrap;
             LyricsStatus.TextTrimming = _model.IsNotSong ? TextTrimming.None : TextTrimming.CharacterEllipsis;

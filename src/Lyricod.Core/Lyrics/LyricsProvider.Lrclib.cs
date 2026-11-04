@@ -38,8 +38,7 @@ public sealed partial class LyricsProvider
         }
         // The exact lookup needs the album too, which browsers often don't report: search, and
         // take the best match that has timed lyrics.
-        // Keep this response's lyrics until selection finishes. A large item can bypass the cache,
-        // and concurrent searches can evict it, without changing the result of this lookup.
+        // Keep this response's lyrics until selection finishes, even if concurrent searches evict them.
         var results = await SearchLrclib($"{track.Title} {track.Artist}", track, ct);
         foreach (var result in results) search.Observe(result.Candidate.Score);
         foreach (var (c, raw) in results)
@@ -55,9 +54,7 @@ public sealed partial class LyricsProvider
     public async Task<RawLyrics?> FetchLrclib(string id, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-        // RawLyrics is public and mutable. Never lend out the cache's weighed instance.
-        if (_lrclibSeen.TryGetValue(id, out var seen))
-            return new RawLyrics { Source = seen.Source, Lrc = seen.Lrc, Plain = seen.Plain, Ref = seen.Ref };
+        if (_lrclibSeen.TryGetValue(id, out var seen)) return seen;
         return LrclibRaw(await GetJson(new HttpRequestMessage(HttpMethod.Get, "https://lrclib.net/api/get/" + Uri.EscapeDataString(id)), ct, require200: true));
     }
 
@@ -77,8 +74,8 @@ public sealed partial class LyricsProvider
             var key = id.ToString(CultureInfo.InvariantCulture);
             var reference = new LyricsRef(LyricsSource.Lrclib, key);
             var raw = LrclibRaw(r)!;
-            raw.Ref = reference; // share the weighed key with both result views
-            _lrclibSeen.Set(key, raw, 2L * key.Length + 2L * (raw.Lrc?.Length ?? 0) + 2L * (raw.Plain?.Length ?? 0));
+            raw.Ref = reference;
+            _lrclibSeen.Set(key, raw);
             var artist = Str(Field(r, "artistName")) ?? "";
             var duration = Num(Field(r, "duration")) ?? 0;
             var candidate = new LyricsCandidate(reference, title, artist, Str(Field(r, "albumName")) ?? "", duration,

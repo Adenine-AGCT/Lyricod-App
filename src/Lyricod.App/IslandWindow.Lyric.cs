@@ -12,7 +12,6 @@ public sealed partial class IslandWindow
 
     void Render()
     {
-        if (_closed || !_shown) return;
         var lyrics = _model.Lyrics;
         var line = lyrics is { IsSynced: true } ? _model.CurrentLine : null;
         var song = lyrics != null ? Romanizer.SongLanguage(lyrics) : null;
@@ -68,7 +67,7 @@ public sealed partial class IslandWindow
     void ShowPiece()
     {
         _pieceTimer.Stop();
-        if (_closed || !_shown || _pieces.Count == 0) return;
+        if (_pieces.Count == 0) return;
         double now = _model.Position();
         var piece = LinePieces.Current(_pieces, now)!;
         if (!ReferenceEquals(piece, _piece))

@@ -261,15 +261,6 @@ public sealed partial class SettingsWindow
         Card(L.Get("ThisSong"), null, Offset(() => _model.SongOffset,
             delta => _model.NudgeSongOffset(delta, clamp: true), _model.ResetSongOffset, () => _model.Track != null, null));
         Note(L.Get("TimingNote"));
-        var saveError = new InfoBar { Severity = InfoBarSeverity.Error, IsClosable = false };
-        void SyncSaveError()
-        {
-            saveError.Message = _model.SongSaveError ?? "";
-            saveError.IsOpen = _model.SongSaveError != null;
-        }
-        _songWatchers.Add(SyncSaveError);
-        SyncSaveError();
-        Page.Children.Add(saveError);
 
         Heading(L.Get("DisplayHeading"));
         FontPicker();

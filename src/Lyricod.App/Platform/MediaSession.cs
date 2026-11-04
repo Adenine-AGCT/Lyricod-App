@@ -14,7 +14,7 @@ public sealed record NowPlaying(
 {
     /// <summary>Changes when the selected SMTC session changes, even within the same player.</summary>
     public long SessionId { get; init; }
-    /// <summary>Invalidates reads and control completions across session/song changes.</summary>
+    /// <summary>Metadata revision for ordering snapshots.</summary>
     public long Revision { get; init; }
     /// <summary>Identifies the song across reports.</summary>
     public string TrackId => $"{AppId}|{Title}|{Artist}|{Album}";
@@ -188,6 +188,7 @@ public sealed class MediaSession : IDisposable
 
     GlobalSystemMediaTransportControlsSession? Current { get { lock (_gate) return _session; } }
     public long Revision { get { lock (_gate) return _revision; } }
+    public long SessionId { get { lock (_gate) return _sessionId; } }
 
     /// <summary>The followed player's cover art (encoded image bytes), or null.</summary>
     public async Task<byte[]?> ReadArtworkAsync()
@@ -250,7 +251,7 @@ public sealed class MediaSession : IDisposable
     GlobalSystemMediaTransportControlsSession? CommandTarget(NowPlaying? displayed)
     {
         lock (_gate)
-            return !_disposed && (displayed == null || displayed.SessionId == _sessionId && displayed.Revision == _revision)
+            return !_disposed && (displayed == null || displayed.SessionId == _sessionId)
                 ? _session : null;
     }
 
@@ -268,8 +269,22 @@ public sealed class MediaSession : IDisposable
     /// <summary>Moves the player to <paramref name="seconds"/>, if it allows seeking.</summary>
     public Task<bool> Seek(double seconds) => Seek(seconds, null);
 
-    internal async Task<bool> Seek(double seconds, NowPlaying? displayed) =>
-        CommandTarget(displayed) is { } s && await s.TryChangePlaybackPositionAsync((long)(Math.Max(seconds, 0) * TimeSpan.TicksPerSecond));
+    internal async Task<bool> Seek(double seconds, NowPlaying? displayed)
+    {
+        if (CommandTarget(displayed) is not { } s) return false;
+        // A cover update must not disable seeking. A different song on the same
+        // session, however, must not receive a drag begun on the previous song.
+        if (displayed != null && displayed.Revision != Revision)
+        {
+            long revision = Revision;
+            var props = await s.TryGetMediaPropertiesAsync();
+            if (revision != Revision || props == null || props.Title?.Trim() != displayed.Title ||
+                (props.Artist?.Trim() ?? "") != displayed.Artist ||
+                (props.AlbumTitle?.Trim() ?? "") != displayed.Album) return false;
+        }
+        return ReferenceEquals(s, CommandTarget(displayed)) &&
+            await s.TryChangePlaybackPositionAsync((long)(Math.Max(seconds, 0) * TimeSpan.TicksPerSecond));
+    }
 
     /// <summary>Stops listening to Windows' media controls; no more <see cref="Changed"/>.</summary>
     public void Dispose()

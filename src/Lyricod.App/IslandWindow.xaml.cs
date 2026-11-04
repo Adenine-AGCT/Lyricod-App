@@ -112,7 +112,7 @@ public sealed partial class IslandWindow : Window
 
         _pieceTimer = DispatcherQueue.CreateTimer();
         _pieceTimer.IsRepeating = false;
-        _pieceTimer.Tick += (_, _) => { try { ShowPiece(); } catch (Exception e) { System.Diagnostics.Debug.WriteLine(e); } };
+        _pieceTimer.Tick += (_, _) => { try { Refresh(OverlayContentChanges.Clock); } catch (Exception e) { System.Diagnostics.Debug.WriteLine(e); } };
         // The pointer is checked often only near the island; a few times a second otherwise.
         _pointerTimer = DispatcherQueue.CreateTimer();
         _pointerTimer.Interval = TimeSpan.FromMilliseconds(250);
@@ -232,7 +232,6 @@ public sealed partial class IslandWindow : Window
         if (update.HasFlag(OverlayContentChanges.Artwork)) _ = ApplyArtwork();
         if (update.HasFlag(OverlayContentChanges.Lyrics)) Render();
         else if (update.HasFlag(OverlayContentChanges.Clock)) ShowPiece();
-        if (_closed || !_shown) return;
         if (update.HasFlag(OverlayContentChanges.Song) || update.HasFlag(OverlayContentChanges.Clock))
         {
             _transport.Update();
@@ -301,7 +300,7 @@ public sealed partial class IslandWindow : Window
                     break;
                 case nameof(Settings.IslandEffect):
                     _sweep.Effect = _settings.IslandEffect;
-                    ShowPiece();
+                    Refresh(OverlayContentChanges.Clock);
                     break;
                 case nameof(Settings.IslandAudioBars) or nameof(Settings.FrameRate):
                     UpdateBars();
@@ -320,7 +319,6 @@ public sealed partial class IslandWindow : Window
 
     async Task ApplyArtwork()
     {
-        if (_closed || !_shown) return;
         var bytes = _model.Artwork;
         double scale = LayoutScale;
         var small = await Images.FromBytes(bytes, (int)Math.Ceiling(44 * scale));

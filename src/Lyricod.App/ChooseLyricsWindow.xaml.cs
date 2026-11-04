@@ -55,7 +55,6 @@ public sealed partial class ChooseLyricsWindow : Window
             _model.Changed -= OnModelChanged;
             Fonts.Changed -= OnFontChanged;
         };
-        UpdateSaveError();
         UpdateSong();
     }
 
@@ -70,7 +69,6 @@ public sealed partial class ChooseLyricsWindow : Window
 
     void OnModelChanged(PlaybackModel.Change change)
     {
-        UpdateSaveError();
         if (change.HasFlag(PlaybackModel.Change.Track)) UpdateSong();
         else if (change.HasFlag(PlaybackModel.Change.Lyrics))
         {
@@ -244,12 +242,6 @@ public sealed partial class ChooseLyricsWindow : Window
             if (Query.FocusState != FocusState.Unfocused) { e.Handled = true; _ = Search(); }
             else if (UseButton.IsEnabled) { e.Handled = true; UseSelection(); }
         }
-    }
-
-    void UpdateSaveError()
-    {
-        SaveErrorText.Text = _model.SongSaveError ?? "";
-        SaveErrorText.Visibility = Shown(_model.SongSaveError != null);
     }
 
     void OnAutomatic(object sender, RoutedEventArgs e) { if (_model.TryUnpinLyrics()) Close(); }

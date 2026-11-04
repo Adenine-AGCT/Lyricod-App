@@ -348,6 +348,4 @@
   <data name="UpdateOpenPageFailed" xml:space="preserve"><value>Couldn’t open the release page. Please try again.</value></data>
   <data name="NotASong" xml:space="preserve"><value>This might not be a song, so no lyrics are shown.</value></data>
   <data name="ShortcutF12Reserved" xml:space="preserve"><value>F12 is reserved for the debugger. Choose another shortcut.</value></data>
-  <data name="SongSettingsSaveFailed" xml:space="preserve"><value>Couldn't save this song's settings. Previous settings were kept. Check storage space and folder permissions, then try again.</value></data>
-  <data name="SongSettingsMoveFailed" xml:space="preserve"><value>Couldn't update this song's saved settings after its duration changed. Previous lyric choices and timing have been kept.</value></data>
 </root>

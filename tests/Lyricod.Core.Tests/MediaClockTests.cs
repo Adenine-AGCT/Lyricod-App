@@ -210,29 +210,28 @@ public class MediaClockTests
     [InlineData("song", 10, 2, true, true)]
     [InlineData("song", 11, 0, true, true)]
     [InlineData("song", 10, 0, true, false)]
-    public void SessionChangeNeedsMatchingSongSampleAndToggleToKeepLyrics(string track, double position,
+    public void SessionChangeKeepsLyricsWheneverTrackIdMatches(string track, double position,
         double stamp, bool playing, bool timeline)
     {
         var clock = new MediaClock(new Playhead());
         clock.Apply(Report(10, 0, false), Epoch, 100);
         clock.Apply(Report(position, stamp, playing, timeline, session: 2, track: track),
             Epoch.AddSeconds(2), 102, out bool trackChanged);
-        Assert.True(trackChanged);
+        Assert.Equal(track != "song", trackChanged);
     }
 
     [Fact]
-    public void RebindingKeepsTimelineButInvalidatesCommandsAndReadsFromOldSession()
+    public void RebindingKeepsTimelineAndRejectsReadsFromOldSession()
     {
         var p = new Playhead();
         var clock = new MediaClock(p);
         clock.Apply(Report(10, 0, false), Epoch, 100);
-        var old = clock.BeginSeek(60, Epoch.AddSeconds(1), 101);
+        clock.Seek(clock.BeginSeek(60, Epoch.AddSeconds(1), 101), 101);
         Assert.True(clock.Apply(Report(10, 0, true, session: 2), Epoch.AddSeconds(2), 102, out bool trackChanged));
         Assert.False(trackChanged);
-        clock.Seek(old, 103);
         Assert.False(clock.Apply(Report(60, 3, false, session: 1, revision: 20), Epoch.AddSeconds(3), 103));
         Assert.True(p.IsPlaying);
-        Assert.Equal(11, p.RawPosition(103), 9);
+        Assert.Equal(61, p.RawPosition(103), 9);
     }
 
     [Fact]
@@ -294,7 +293,7 @@ public class MediaClockTests
     [Theory]
     [InlineData(60)]
     [InlineData(2)]
-    public void AHeartbeatDuringPendingSeekDoesNotCancelImmediateLocalFeedback(double target)
+    public void AHeartbeatDuringAsyncSeekDoesNotCancelImmediateLocalFeedback(double target)
     {
         var p = new Playhead();
         var clock = new MediaClock(p);
@@ -391,7 +390,7 @@ public class MediaClockTests
     [InlineData(0, true)]
     [InlineData(-90000, false)]
     [InlineData(-90000, true)]
-    public void UndatedChangedPositionCanConfirmPendingSeek(double stamp, bool playing)
+    public void UndatedChangedPositionCanConfirmSeekBeforeCompletion(double stamp, bool playing)
     {
         var p = new Playhead();
         var clock = new MediaClock(p);
@@ -431,21 +430,18 @@ public class MediaClockTests
     }
 
     [Fact]
-    public void FailedOrSupersededSeekCannotChangeTheClock()
+    public void UncommittedSeekSnapshotDoesNotChangeTheClockOrBlockExternalReports()
     {
         var p = new Playhead();
         var clock = new MediaClock(p);
-        clock.Apply(Report(10, 0, false), Epoch, 100);
-        var failed = clock.BeginSeek(60, Epoch.AddSeconds(1), 101);
-        clock.CancelSeek(failed);
-        clock.Seek(failed, 102);
-        Assert.Equal(10, p.RawPosition(102), 9);
-        var old = clock.BeginSeek(30, Epoch.AddSeconds(3), 103);
-        var latest = clock.BeginSeek(80, Epoch.AddSeconds(4), 104);
-        clock.Seek(old, 105);
-        Assert.Equal(10, p.RawPosition(105), 9);
-        clock.Seek(latest, 106);
-        Assert.Equal(80, p.RawPosition(106), 9);
+        clock.Apply(Report(10, 0, true), Epoch, 100);
+        int version = p.Version;
+        var request = clock.BeginSeek(60, Epoch.AddSeconds(1), 101);
+        Assert.Equal(11, request.PreviousPosition);
+        Assert.Equal(version, p.Version);
+        Assert.Equal(11, p.RawPosition(101));
+        Assert.True(clock.Apply(Report(30, 2, true), Epoch.AddSeconds(2), 102));
+        Assert.Equal(30, p.RawPosition(102));
     }
 
     [Theory]

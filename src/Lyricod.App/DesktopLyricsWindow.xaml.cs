@@ -44,8 +44,7 @@ public sealed partial class DesktopLyricsWindow : Window
     LyricLine? _piece;
     double _textWidth;
     bool? _shown;
-    bool _placing, _closed;
-    (int X, int Y)? _programmaticSpot;
+    bool _closed;
     /// <summary>Whether the window has its strip size yet (before that, its size is Windows' default).</summary>
     bool _placed;
     readonly Overlay _overlay;
@@ -69,19 +68,17 @@ public sealed partial class DesktopLyricsWindow : Window
 
         _pieceTimer = DispatcherQueue.CreateTimer();
         _pieceTimer.IsRepeating = false;
-        _pieceTimer.Tick += (_, _) => { try { ShowPiece(); } catch (Exception e) { System.Diagnostics.Debug.WriteLine(e); } };
+        _pieceTimer.Tick += (_, _) => { try { Refresh(OverlayContentChanges.Clock); } catch (Exception e) { System.Diagnostics.Debug.WriteLine(e); } };
 
         _model.Changed += OnModelChanged;
         Fonts.Changed += OnFontChanged;
         _settings.PropertyChanged += OnSettingChanged;
-        AppWindow.Changed += OnAppWindowChanged;
         Closed += (_, _) =>
         {
             _closed = true;
             _model.Changed -= OnModelChanged;
             Fonts.Changed -= OnFontChanged;
             _settings.PropertyChanged -= OnSettingChanged;
-            AppWindow.Changed -= OnAppWindowChanged;
             _pieceTimer.Stop();
         };
 
@@ -122,34 +119,14 @@ public sealed partial class DesktopLyricsWindow : Window
         var area = DisplayArea.Primary.WorkArea;
         var spot = DesktopLyricsPlacement.Origin(saved, current,
             new(area.X, area.Y, area.Width, area.Height), size.Width, size.Height, (int)(40 * scale));
-        _placing = true;
-        try
-        {
-            AppWindow.MoveAndResize(new RectInt32(spot.X, spot.Y, size.Width, size.Height));
-            if (_closed) return;
-            _programmaticSpot = (AppWindow.Position.X, AppWindow.Position.Y);
-            _placed = true;
-            // Keep the persisted top-left in sync with its new height, even while locked. On restart
-            // that position is restored directly; null remains null for the default bottom-centre spot.
-            if (saved != null) SaveSpot();
-        }
-        finally { _placing = false; }
+        AppWindow.MoveAndResize(new RectInt32(spot.X, spot.Y, size.Width, size.Height));
+        _placed = true;
     }
 
     static bool OnSomeScreen(int x, int y, SizeInt32 size)
     {
         var area = DisplayArea.GetFromRect(new RectInt32(x, y, size.Width, size.Height), DisplayAreaFallback.None);
         return area != null;
-    }
-
-    void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
-    {
-        if (_closed || !args.DidPositionChange || _placing || _settings.DesktopLocked) return;
-        // AppWindow can deliver a move notification after MoveAndResize has returned. Ignore
-        // that actual programmatic destination too, especially when resetting to a null spot.
-        if (_programmaticSpot == (sender.Position.X, sender.Position.Y)) return;
-        _programmaticSpot = null;
-        SaveSpot();
     }
 
     void SaveSpot()
@@ -298,7 +275,6 @@ public sealed partial class DesktopLyricsWindow : Window
 
     void Render()
     {
-        if (_closed || _shown != true) return;
         var lyrics = _model.Lyrics;
         var line = lyrics is { IsSynced: true } ? _model.CurrentLine : null;
         if (line == null)
@@ -344,7 +320,7 @@ public sealed partial class DesktopLyricsWindow : Window
     void ShowPiece()
     {
         _pieceTimer.Stop();
-        if (_closed || _shown != true || _pieces.Count == 0) return;
+        if (_pieces.Count == 0) return;
         double now = _model.Position();
         var piece = LinePieces.Current(_pieces, now)!;
         if (!ReferenceEquals(piece, _piece))

@@ -33,7 +33,7 @@ public sealed partial class PlaybackModel
 
     public bool TryPinLyrics(LyricsRef reference)
     {
-        if (!TryApplyPendingDuration() || Track is not { } track) return false;
+        if (Track is not { } track) return false;
         if (!TrySaveSongChoice(track, choice => choice.Lyrics = reference)) return false;
         LoadLyrics(track, ignoreCache: true);
         return true;
@@ -42,7 +42,7 @@ public sealed partial class PlaybackModel
     /// <summary>Searches afresh only after the manual choice has been removed successfully.</summary>
     public bool TryUnpinLyrics()
     {
-        if (!TryApplyPendingDuration() || Track is not { } track) return false;
+        if (Track is not { } track) return false;
         if (!TrySaveSongChoice(track, choice => choice.Lyrics = null)) return false;
         _provider.ClearCache(track);
         LoadLyrics(track, ignoreCache: true);
@@ -51,23 +51,9 @@ public sealed partial class PlaybackModel
 
     bool TrySaveSongChoice(Track track, Action<TrackOverride> edit)
     {
-        bool saved = _overrides.TryGet(track, out var choice);
-        if (saved)
-        {
-            edit(choice);
-            saved = _overrides.TrySet(track, choice);
-        }
-        SetSongSaveError(saved ? null : "SongSettingsSaveFailed");
-        return saved;
-    }
-
-    void SetSongSaveError(string? resourceKey)
-    {
-        string? message = resourceKey == null ? null : L.Get(resourceKey);
-        if (SongSaveError == message) return;
-        SongSaveError = message;
-        if (message != null) LastError = message;
-        Changed?.Invoke(Change.Diagnostics);
+        if (!_overrides.TryGet(track, out var choice)) return false;
+        edit(choice);
+        return _overrides.TrySet(track, choice);
     }
 
     public void ClearSavedLyrics() => _provider.ClearAll();

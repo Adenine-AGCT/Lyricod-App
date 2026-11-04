@@ -98,7 +98,7 @@ public sealed partial class IslandWindow
             // As on the Mac: the mini player fades in once the pill has mostly grown, and goes at once on collapse.
             Fade(Expanded, expand ? 1 : 0, expand ? 0.18 : 0.08, () => { if (!_expanded) Expanded.Visibility = Visibility.Collapsed; },
                 delay: expand ? 0.12 : 0);
-            Resize();
+            if (_shown) Resize();
         }
     }
 }

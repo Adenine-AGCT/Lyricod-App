@@ -10,13 +10,7 @@ public class DesktopLyricsPlacementTests
     {
         (int X, int Y)? saved = settings.DesktopX is int x && settings.DesktopY is int y ? (x, y) : null;
         var spot = DesktopLyricsPlacement.Origin(saved, current, WorkArea, width, height, margin);
-        var result = new ScreenRect(spot.X, spot.Y, width, height);
-        if (saved != null)
-        {
-            settings.DesktopX = spot.X;
-            settings.DesktopY = spot.Y;
-        }
-        return result;
+        return new ScreenRect(spot.X, spot.Y, width, height);
     }
 
     [Theory]
@@ -38,7 +32,7 @@ public class DesktopLyricsPlacementTests
     [InlineData(1.5, true)]
     [InlineData(2.0, true)]
     [InlineData(1.0, false)]
-    public void FontAndSecondRowRoundTripsKeepTheBottomAndSavedPosition(double scale, bool locked)
+    public void FontAndSecondRowRoundTripsKeepTheBottomWithoutRewritingTheSavedPosition(double scale, bool locked)
     {
         var settings = new Settings { DesktopX = 360, DesktopY = 100, DesktopLocked = locked };
         int width = (int)(900 * scale), margin = (int)(40 * scale);
@@ -49,21 +43,23 @@ public class DesktopLyricsPlacementTests
         {
             strip = Place(settings, strip, (int)(dipHeight * scale), width, margin);
             Assert.Equal(bottom, strip.Bottom);
-            Assert.Equal((int)strip.Top, settings.DesktopY);
+            Assert.Equal(100, settings.DesktopY);
         }
         Assert.Equal(100, strip.Top);
     }
 
     [Fact]
-    public void RestartAfterAResizeRestoresTheNewTopWithoutMovingTheBottom()
+    public void RestartAfterAResizeRestoresTheLastDraggedTopLeft()
     {
         var settings = new Settings { DesktopX = 360, DesktopY = 100, DesktopLocked = true };
         var before = Place(settings, null, 96);
         var resized = Place(settings, before, 116);
-        Assert.Equal(80, settings.DesktopY);
+        Assert.Equal(80, resized.Top);
+        Assert.Equal(before.Bottom, resized.Bottom);
+        Assert.Equal(100, settings.DesktopY);
         var restored = Place(settings, null, 116);
-        Assert.Equal(resized, restored);
-        Assert.Equal(before.Bottom, restored.Bottom);
+        Assert.Equal(360, restored.Left);
+        Assert.Equal(100, restored.Top);
     }
 
     [Fact]
@@ -76,7 +72,8 @@ public class DesktopLyricsPlacementTests
         Assert.Equal(-1500, resized.Left);
         Assert.Equal(-220, resized.Top);
         Assert.Equal(dragged.Bottom, resized.Bottom);
-        Assert.Equal(resized, Place(settings, null, 116));
+        Assert.Equal(-200, settings.DesktopY);
+        Assert.Equal(-200, Place(settings, null, 116).Top);
     }
 
     [Fact]
@@ -87,8 +84,8 @@ public class DesktopLyricsPlacementTests
         var resized = Place(settings, moved, 116);
         Assert.Equal(-1200, resized.Left);
         Assert.Equal(moved.Bottom, resized.Bottom);
-        Assert.Equal(-1200, settings.DesktopX);
-        Assert.Equal(280, settings.DesktopY);
+        Assert.Equal(360, settings.DesktopX);
+        Assert.Equal(100, settings.DesktopY);
     }
 
     [Fact]

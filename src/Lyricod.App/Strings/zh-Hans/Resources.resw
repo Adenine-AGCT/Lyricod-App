@@ -348,6 +348,4 @@
   <data name="UpdateOpenPageFailed" xml:space="preserve"><value>无法打开发布页面，请重试。</value></data>
   <data name="NotASong" xml:space="preserve"><value>当前内容可能不是歌曲，因此没有显示歌词。</value></data>
   <data name="ShortcutF12Reserved" xml:space="preserve"><value>F12 为系统调试器保留，请选择其他快捷键。</value></data>
-  <data name="SongSettingsSaveFailed" xml:space="preserve"><value>无法保存本歌曲设置。已保留原有设置，请检查存储空间和文件夹写入权限后重试。</value></data>
-  <data name="SongSettingsMoveFailed" xml:space="preserve"><value>歌曲时长变化后无法更新已保存的设置，原有歌词选择和时间调整已保留。</value></data>
 </root>

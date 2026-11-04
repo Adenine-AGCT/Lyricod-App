@@ -38,72 +38,6 @@ public class LyricsMemoryCacheTests
     }
 
     [Fact]
-    public async Task LrclibCacheHitCannotBeMutatedByPreviewCaller()
-    {
-        int requests = 0;
-        using var fixture = new Fixture(_ => { requests++; return Json(new[] { Entry(1) }); });
-        await fixture.Provider.LrclibCandidates("Hello", Song(), TestContext.Current.CancellationToken);
-        var first = Assert.IsType<RawLyrics>(await fixture.Provider.FetchLrclib("1", TestContext.Current.CancellationToken));
-        first.Lrc = "changed by a caller";
-        first.Plain = new string('x', 1024);
-        var next = Assert.IsType<RawLyrics>(await fixture.Provider.FetchLrclib("1", TestContext.Current.CancellationToken));
-
-        Assert.NotSame(first, next);
-        Assert.Equal("[00:01.00]Hello", next.Lrc);
-        Assert.Null(next.Plain);
-        Assert.Equal(1, requests);
-    }
-
-    [Fact]
-    public async Task OversizedLrclibResultStillMatchesWithoutRetainingIt()
-    {
-        // The response fits the network limit, but its UTF-16 strings exceed the memory-cache budget.
-        string plain = new('x', (int)(LyricsProvider.LrclibCacheTextBytes / 2) + 1);
-        int fallbackFetches = 0;
-        using var fixture = new Fixture(request =>
-        {
-            if (request.RequestUri!.Host != "lrclib.net") return Json(new { });
-            if (request.RequestUri.AbsolutePath == "/api/search") return Json(new[] { Entry(1, plain: plain) });
-            if (request.RequestUri.AbsolutePath == "/api/get") return new(HttpStatusCode.NotFound);
-            fallbackFetches++;
-            return Json(Entry(1, plain: plain));
-        });
-
-        var lyrics = await fixture.Provider.GetLyrics(Song(), ct: TestContext.Current.CancellationToken);
-        var found = Assert.IsType<Lyrics>(lyrics);
-        Assert.Equal("Hello", Assert.Single(found.Lines).Text);
-        Assert.Equal("LRCLIB", found.Source);
-        Assert.Equal(0, fallbackFetches); // selection uses this response, not a second request
-        var preview = await fixture.Provider.FetchLrclib("1", TestContext.Current.CancellationToken);
-        Assert.Equal(plain, preview?.Plain);
-        Assert.Equal(1, fallbackFetches); // not retained just to make the earlier lookup succeed
-    }
-
-    [Fact]
-    public async Task LaterResultsEvictingBestMatchDoNotLoseTheCurrentLookup()
-    {
-        // Under 4 MiB over HTTP, over 4 MiB as retained UTF-16: the first candidate is evicted
-        // while processing this same response, despite being the only acceptable match.
-        var entries = new[] { Entry(1) }.Concat(Enumerable.Range(2, 19)
-            .Select(id => Entry(id, "Unrelated " + id, new string('x', 140_000)))).ToArray();
-        int fallbackFetches = 0;
-        using var fixture = new Fixture(request =>
-        {
-            if (request.RequestUri!.Host != "lrclib.net") return Json(new { });
-            if (request.RequestUri.AbsolutePath == "/api/search") return Json(entries);
-            if (request.RequestUri.AbsolutePath == "/api/get") return new(HttpStatusCode.NotFound);
-            fallbackFetches++;
-            return Json(Entry(1));
-        });
-
-        var lyrics = await fixture.Provider.GetLyrics(Song(), ct: TestContext.Current.CancellationToken);
-        Assert.Equal("Hello", Assert.Single(Assert.IsType<Lyrics>(lyrics).Lines).Text);
-        Assert.Equal(0, fallbackFetches);
-        Assert.Equal("[00:01.00]Hello", (await fixture.Provider.FetchLrclib("1", TestContext.Current.CancellationToken))?.Lrc);
-        Assert.Equal(1, fallbackFetches);
-    }
-
-    [Fact]
     public async Task AliasGrowthIsBoundedAndReturnedListsCannotGrowTheCache()
     {
         int requests = 0;
@@ -124,24 +58,6 @@ public class LyricsMemoryCacheTests
         var oldest = await fixture.Provider.WithAliases(Song(artist: "Artist0"), TestContext.Current.CancellationToken);
         Assert.Equal(before + 1, requests);
         Assert.Equal("Artist0 alias", Assert.Single(oldest.ArtistAliases));
-    }
-
-    [Fact]
-    public async Task LargeAliasResultIsReturnedWithoutRemainingInTheCache()
-    {
-        int requests = 0;
-        string alias = new('x', (int)(LyricsProvider.AliasCacheTextBytes / 2) + 1);
-        using var fixture = new Fixture(_ =>
-        {
-            requests++;
-            return Json(new { result = new { artists = new[] { new { name = "Singer", alias = new[] { alias } } } } });
-        });
-        for (int i = 0; i < 2; i++)
-        {
-            var result = await fixture.Provider.WithAliases(Song(), TestContext.Current.CancellationToken);
-            Assert.Equal(alias, Assert.Single(result.ArtistAliases));
-        }
-        Assert.Equal(2, requests);
     }
 
     [Fact]
