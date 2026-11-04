@@ -14,8 +14,6 @@ public sealed record NowPlaying(
 {
     /// <summary>Changes when the selected SMTC session changes, even within the same player.</summary>
     public long SessionId { get; init; }
-    /// <summary>Metadata revision for ordering snapshots.</summary>
-    public long Revision { get; init; }
     /// <summary>Identifies the song across reports.</summary>
     public string TrackId => $"{AppId}|{Title}|{Artist}|{Album}";
 }
@@ -31,7 +29,7 @@ public sealed class MediaSession : IDisposable
     GlobalSystemMediaTransportControlsSessionManager? _manager;
     GlobalSystemMediaTransportControlsSession? _session;
     readonly Lock _gate = new();
-    long _sessionId, _revision;
+    long _sessionId;
     volatile bool _disposed;
 
     /// <summary>Raised on a background thread when the song, play state or position changed.</summary>
@@ -116,7 +114,6 @@ public sealed class MediaSession : IDisposable
                 }
                 _session = chosen;
                 _sessionId++;
-                _revision++;
                 if (_session != null)
                 {
                     _session.MediaPropertiesChanged += OnDetailsChanged;
@@ -136,7 +133,6 @@ public sealed class MediaSession : IDisposable
         lock (_gate)
         {
             if (!ReferenceEquals(sender, _session) || _disposed) return;
-            _revision++;
         }
         DetailsChanged?.Invoke();
         Changed?.Invoke();
@@ -156,8 +152,8 @@ public sealed class MediaSession : IDisposable
     public async Task<NowPlaying?> ReadAsync()
     {
         GlobalSystemMediaTransportControlsSession? s;
-        long sessionId, revision;
-        lock (_gate) { s = _session; sessionId = _sessionId; revision = _revision; }
+        long sessionId;
+        lock (_gate) { s = _session; sessionId = _sessionId; }
         if (s == null) return null;
         try
         {
@@ -181,13 +177,12 @@ public sealed class MediaSession : IDisposable
                 s.SourceAppUserModelId ?? "", props.Title.Trim(), props.Artist?.Trim() ?? "", props.AlbumTitle?.Trim() ?? "",
                 hasTimeline ? duration : 0, (timeline.Position - timeline.StartTime).TotalSeconds, at,
                 info?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing, hasTimeline,
-                info?.Controls?.IsPlaybackPositionEnabled == true) { SessionId = sessionId, Revision = revision };
+                info?.Controls?.IsPlaybackPositionEnabled == true) { SessionId = sessionId };
         }
         catch (Exception) { return null; } // the player quit while being read
     }
 
     GlobalSystemMediaTransportControlsSession? Current { get { lock (_gate) return _session; } }
-    public long Revision { get { lock (_gate) return _revision; } }
     public long SessionId { get { lock (_gate) return _sessionId; } }
 
     /// <summary>The followed player's cover art (encoded image bytes), or null.</summary>
@@ -269,22 +264,9 @@ public sealed class MediaSession : IDisposable
     /// <summary>Moves the player to <paramref name="seconds"/>, if it allows seeking.</summary>
     public Task<bool> Seek(double seconds) => Seek(seconds, null);
 
-    internal async Task<bool> Seek(double seconds, NowPlaying? displayed)
-    {
-        if (CommandTarget(displayed) is not { } s) return false;
-        // A cover update must not disable seeking. A different song on the same
-        // session, however, must not receive a drag begun on the previous song.
-        if (displayed != null && displayed.Revision != Revision)
-        {
-            long revision = Revision;
-            var props = await s.TryGetMediaPropertiesAsync();
-            if (revision != Revision || props == null || props.Title?.Trim() != displayed.Title ||
-                (props.Artist?.Trim() ?? "") != displayed.Artist ||
-                (props.AlbumTitle?.Trim() ?? "") != displayed.Album) return false;
-        }
-        return ReferenceEquals(s, CommandTarget(displayed)) &&
+    internal async Task<bool> Seek(double seconds, NowPlaying? displayed) =>
+        CommandTarget(displayed) is { } s &&
             await s.TryChangePlaybackPositionAsync((long)(Math.Max(seconds, 0) * TimeSpan.TicksPerSecond));
-    }
 
     /// <summary>Stops listening to Windows' media controls; no more <see cref="Changed"/>.</summary>
     public void Dispose()

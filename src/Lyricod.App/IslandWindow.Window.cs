@@ -59,9 +59,9 @@ public sealed partial class IslandWindow
         if (visible)
         {
             Place();
-            if (_closed || !_shown) return;
+            if (_closed) return;
             AppWindow.Show(false);
-            if (_closed || !_shown) return;
+            if (_closed) return;
             _overlay.StripFrame();
             _pointerTimer.Start();
             AnimateShown(true);
@@ -70,10 +70,8 @@ public sealed partial class IslandWindow
         {
             _pointerTimer.Stop();
             _progressTimer.Stop();
-            _progress.SetInteractionEnabled(false);
             _pieceTimer.Stop();
             _sweep.Set(0, 1);
-            StopContentAnimations();
             SetHovered(false);
             _trail.Clear();
             AnimateShown(false, () => { if (!_shown && !_closed) AppWindow.Hide(); });

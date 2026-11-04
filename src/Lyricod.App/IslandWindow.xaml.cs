@@ -92,7 +92,6 @@ public sealed partial class IslandWindow : Window
         _transport = new TransportButtons(model, 13);
         TransportHost.Children.Add(_transport);
         _progress = new ProgressLine(model, hoverPreview: true);
-        _progress.SetInteractionEnabled(false);
         ProgressHost.Children.Add(_progress);
         LyricsButton.Click += (_, _) => openLyrics();
         SettingsButton.Click += (_, _) => openSettings();
@@ -119,7 +118,7 @@ public sealed partial class IslandWindow : Window
         _pointerTimer.Tick += (_, _) => { try { CheckPointer(); } catch (Exception e) { System.Diagnostics.Debug.WriteLine(e); } };
         _progressTimer = DispatcherQueue.CreateTimer();
         _progressTimer.Interval = TimeSpan.FromSeconds(0.5);
-        _progressTimer.Tick += (_, _) => { try { if (_shown && !_closed && _expanded) _progress.Update(); } catch (Exception e) { System.Diagnostics.Debug.WriteLine(e); } };
+        _progressTimer.Tick += (_, _) => { try { if (!_closed && _expanded) _progress.Update(); } catch (Exception e) { System.Diagnostics.Debug.WriteLine(e); } };
         _barTimer = DispatcherQueue.CreateTimer();
         _barTimer.Tick += (_, _) => { try { DrawBars(); } catch (Exception e) { System.Diagnostics.Debug.WriteLine(e); } };
         // Text hidden while the pill widens shows again by this at the latest.
@@ -128,7 +127,7 @@ public sealed partial class IslandWindow : Window
         _revealTimer.Interval = TimeSpan.FromSeconds(0.35);
         _revealTimer.Tick += (_, _) =>
         {
-            try { if (_waitingForWidth && _shown && !_closed) { _waitingForWidth = false; RevealText(); } }
+            try { if (_waitingForWidth && !_closed) { _waitingForWidth = false; RevealText(); } }
             catch (Exception e) { System.Diagnostics.Debug.WriteLine(e); }
         };
 
@@ -175,7 +174,6 @@ public sealed partial class IslandWindow : Window
             _pieceTimer.Stop();
             _pointerTimer.Stop();
             _progressTimer.Stop();
-            _progress.SetInteractionEnabled(false);
             _barTimer.Stop();
             _revealTimer.Stop();
             _pauseTimer.Stop();
@@ -209,7 +207,6 @@ public sealed partial class IslandWindow : Window
     {
         if (_closed) return;
         bool track = change.HasFlag(PlaybackModel.Change.Track);
-        if (_expanded && (track || change.HasFlag(PlaybackModel.Change.Session))) _progress.CancelInteraction();
         UpdatePaused();
         var updates = OverlayContentChanges.None;
         if (track) updates |= OverlayContentChanges.Song | OverlayContentChanges.Lyrics;
@@ -243,7 +240,7 @@ public sealed partial class IslandWindow : Window
 
     void UpdateProgress()
     {
-        if (_closed || !_shown || !_expanded) { _progressTimer.Stop(); return; }
+        if (_closed || !_expanded) { _progressTimer.Stop(); return; }
         _progress.Update();
         if (_model.IsPlaying && double.IsFinite(_model.Duration) && _model.Duration > 0) _progressTimer.Start();
         else _progressTimer.Stop();
@@ -322,9 +319,9 @@ public sealed partial class IslandWindow : Window
         var bytes = _model.Artwork;
         double scale = LayoutScale;
         var small = await Images.FromBytes(bytes, (int)Math.Ceiling(44 * scale));
-        if (_closed || !_shown || !ReferenceEquals(bytes, _model.Artwork) || scale != LayoutScale) return;
+        if (_closed || !ReferenceEquals(bytes, _model.Artwork) || scale != LayoutScale) return;
         var big = await Images.FromBytes(bytes, (int)Math.Ceiling(68 * scale));
-        if (_closed || !_shown || !ReferenceEquals(bytes, _model.Artwork) || scale != LayoutScale) return;
+        if (_closed || !ReferenceEquals(bytes, _model.Artwork) || scale != LayoutScale) return;
         Art.Source = small;
         BigArt.Source = big;
         ApplyColour();

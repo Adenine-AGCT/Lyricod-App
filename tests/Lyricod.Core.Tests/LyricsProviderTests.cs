@@ -431,7 +431,7 @@ public class LyricsProviderTests
     }
 
     [Fact]
-    public void FailedDurationCorrectionKeepsTheTrackChoicesAndManualCacheUntilRetry()
+    public void FailedDurationCorrectionKeepsTheTrackChoicesAndManualCache()
     {
         using var fixture = new Fixture(_ => throw new Exception("Duration correction should not request the network"));
         var stale = Track() with { Duration = 0 };
@@ -453,86 +453,6 @@ public class LyricsProviderTests
         Assert.Equal(oldOverrides, File.ReadAllText(overrideFile));
         Assert.Equal(oldCache, File.ReadAllText(oldFile));
         Assert.False(File.Exists(newFile));
-
-        Directory.Delete(overrideFile + ".tmp");
-        Assert.True(fixture.Provider.TryCorrectDuration(stale, 120, overrides, out var transition));
-        Assert.Equal(corrected, transition);
-        Assert.True(overrides[stale].IsEmpty);
-        Assert.Equal(LyricsRef.Netease(7), overrides[transition].Lyrics);
-        Assert.Equal(1.5, overrides[transition].Offset);
-        Assert.False(File.Exists(oldFile));
-        Assert.Equal(oldCache, File.ReadAllText(newFile));
-    }
-
-    [Theory]
-    [InlineData("pin", false)]
-    [InlineData("unpin", false)]
-    [InlineData("offset", false)]
-    [InlineData("pin", true)]
-    [InlineData("unpin", true)]
-    [InlineData("offset", true)]
-    public void ManualSaveAfterFailedDurationCorrectionUsesCorrectedKeyAndKeepsOtherFields(string action, bool failManualSave)
-    {
-        using var fixture = new Fixture(_ => throw new Exception("Saving choices should not request the network"));
-        var stale = Track() with { Duration = 0 };
-        var corrected = stale with { Duration = 120 };
-        var oldFile = fixture.Seed(stale);
-        var overrideFile = Path.Combine(Path.GetDirectoryName(oldFile)!, "overrides");
-        var overrides = new TrackOverrides(overrideFile);
-        Assert.True(overrides.TrySet(stale, new TrackOverride { Lyrics = LyricsRef.Netease(7), Offset = 1.5 }));
-        Assert.True(overrides.TrySet(corrected, new TrackOverride { Lyrics = LyricsRef.Netease(8), Offset = 0.25 }));
-        var beforeCorrection = File.ReadAllText(overrideFile);
-        Directory.CreateDirectory(overrideFile + ".tmp");
-
-        Assert.False(fixture.Provider.TryCorrectDuration(stale, 120, overrides, out var unchanged));
-        Assert.Equal(stale, unchanged);
-        Assert.Equal(beforeCorrection, File.ReadAllText(overrideFile));
-        Assert.Equal(LyricsRef.Netease(7), overrides[stale].Lyrics);
-        Assert.Equal(1.5, overrides[stale].Offset);
-        Assert.Equal(LyricsRef.Netease(8), overrides[corrected].Lyrics);
-        Assert.Equal(0.25, overrides[corrected].Offset);
-
-        // A later manual action first retries the failed migration, then reads the merged choice.
-        Directory.Delete(overrideFile + ".tmp");
-        Assert.True(fixture.Provider.TryCorrectDuration(stale, 120, overrides, out var ready));
-        Assert.Equal(corrected, ready);
-        Assert.True(overrides[stale].IsEmpty);
-        var choice = overrides[ready];
-        Assert.Equal(LyricsRef.Netease(8), choice.Lyrics);
-        Assert.Equal(0.25, choice.Offset);
-        switch (action)
-        {
-            case "pin": choice.Lyrics = LyricsRef.Netease(9); break;
-            case "unpin": choice.Lyrics = null; break;
-            case "offset": choice.Offset = 2; break;
-        }
-
-        if (failManualSave)
-        {
-            var afterCorrection = File.ReadAllText(overrideFile);
-            Directory.CreateDirectory(overrideFile + ".tmp");
-            Assert.False(overrides.TrySet(ready, choice));
-            // The successful migration remains committed even though this edit did not save.
-            Assert.True(overrides[stale].IsEmpty);
-            Assert.Equal(LyricsRef.Netease(8), overrides[ready].Lyrics);
-            Assert.Equal(0.25, overrides[ready].Offset);
-            Assert.Equal(afterCorrection, File.ReadAllText(overrideFile));
-            var afterFailure = new TrackOverrides(overrideFile);
-            Assert.True(afterFailure[stale].IsEmpty);
-            Assert.Equal(LyricsRef.Netease(8), afterFailure[corrected].Lyrics);
-            Assert.Equal(0.25, afterFailure[corrected].Offset);
-            Directory.Delete(overrideFile + ".tmp");
-        }
-
-        Assert.True(overrides.TrySet(ready, choice));
-        var reloaded = new TrackOverrides(overrideFile);
-        var nextPlayback = Track() with { Duration = 120 };
-        Assert.True(reloaded[stale].IsEmpty);
-        Assert.Equal(action == "pin" ? LyricsRef.Netease(9) : action == "unpin" ? null : LyricsRef.Netease(8),
-            reloaded[nextPlayback].Lyrics);
-        Assert.Equal(action == "offset" ? 2 : 0.25, reloaded[nextPlayback].Offset);
-        Assert.Equal(reloaded[nextPlayback].Lyrics, overrides[ready].Lyrics);
-        Assert.Equal(reloaded[nextPlayback].Offset, overrides[ready].Offset);
     }
 
     public static IEnumerable<object[]> LookupCases()

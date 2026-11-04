@@ -71,9 +71,6 @@ sealed partial class ProgressLine : Grid
     readonly TextBlock _elapsed, _left;
     readonly ProgressInteraction _interaction;
     readonly DispatcherQueueTimer? _hoverTimer;
-    Platform.NowPlaying? _mediaSnapshot;
-    double _mediaDuration = double.NaN;
-    bool _interactionEnabled = true;
     bool? _seekable;
     static readonly InputCursor Hand = InputSystemCursor.Create(InputSystemCursorShape.Hand);
 
@@ -89,8 +86,6 @@ sealed partial class ProgressLine : Grid
             {
                 try
                 {
-                    if (!_interactionEnabled) { CancelInteraction(); return; }
-                    SyncMedia();
                     _interaction.ActivatePreview(PlaybackModel.Now);
                     Update();
                     SchedulePreview();
@@ -105,7 +100,7 @@ sealed partial class ProgressLine : Grid
         PointerMoved += OnPointerMoved;
         PointerExited += (_, _) => CancelPreview();
         PointerReleased += OnPointerReleased;
-        PointerCaptureLost += (_, _) => { if (_interaction.IsScrubbing) CancelInteraction(); };
+        PointerCaptureLost += (_, _) => { if (_interaction.IsScrubbing) { _interaction.Cancel(); Update(); } };
         RowSpacing = 4;
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -133,26 +128,11 @@ sealed partial class ProgressLine : Grid
     bool HasDuration => double.IsFinite(_model.Duration) && _model.Duration > 0;
     bool CanSeek => _model.CanSeek && HasDuration;
 
-    void SyncMedia()
-    {
-        var now = _model.NowPlaying;
-        double duration = _model.Duration;
-        if (ReferenceEquals(now, _mediaSnapshot) && duration == _mediaDuration) return;
-        _mediaSnapshot = now;
-        _mediaDuration = duration;
-        bool wasScrubbing = _interaction.IsScrubbing;
-        _interaction.SetMedia(now?.TrackId, now?.SessionId ?? 0, duration);
-        if (wasScrubbing && !_interaction.IsScrubbing)
-            ReleasePointerCaptures();
-        if (_interaction.HoverDueAt == null) _hoverTimer?.Stop();
-    }
-
     void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
         try
         {
-            SyncMedia();
-            if (!_interactionEnabled || _interaction.IsScrubbing) return;
+            if (_interaction.IsScrubbing) return;
             CancelPreview();
             if (!CanSeek) return;
             var p = e.GetCurrentPoint(_bar).Position;
@@ -169,8 +149,6 @@ sealed partial class ProgressLine : Grid
     {
         try
         {
-            if (!_interactionEnabled) return;
-            SyncMedia();
             var point = e.GetCurrentPoint(_bar);
             var p = point.Position;
             if (_interaction.IsScrubbing)
@@ -197,11 +175,10 @@ sealed partial class ProgressLine : Grid
     {
         try
         {
-            SyncMedia();
             if (!_interaction.IsScrubbing) return;
             var point = e.GetCurrentPoint(_bar);
             _interaction.MoveScrub(point.Position.X / Math.Max(_bar.ActualWidth, 1));
-            double? target = _interaction.ReleaseScrub(CanSeek);
+            double? target = _interaction.ReleaseScrub(_model.Duration, CanSeek);
             ReleasePointerCapture(e.Pointer);
             if (target is double seconds) _model.SeekPlayer(seconds);
             Update();
@@ -226,25 +203,8 @@ sealed partial class ProgressLine : Grid
         Update();
     }
 
-    /// <summary>Called before the island collapses, hides or closes; no pending pointer work survives.</summary>
-    public void CancelInteraction()
-    {
-        _hoverTimer?.Stop();
-        bool wasScrubbing = _interaction.IsScrubbing;
-        _interaction.Cancel();
-        if (wasScrubbing) ReleasePointerCaptures();
-        Update();
-    }
-
-    public void SetInteractionEnabled(bool enabled)
-    {
-        _interactionEnabled = enabled;
-        if (!enabled) CancelInteraction();
-    }
-
     public void Update()
     {
-        SyncMedia();
         Visibility = HasDuration ? Visibility.Visible : Visibility.Collapsed;
         bool seekable = CanSeek;
         if (seekable != _seekable)
@@ -254,7 +214,7 @@ sealed partial class ProgressLine : Grid
             ToolTipService.SetToolTip(this, seekable ? null : L.Get("CantSeek"));
         }
         if (!HasDuration) return;
-        var display = _interaction.Display(_model.PlayerPosition);
+        var display = _interaction.Display(_model.PlayerPosition, _model.Duration);
         _bar.Value = display.Fraction;
         _elapsed.Text = Time(display.Elapsed);
         _elapsed.Opacity = display.IsPreviewing ? 0.85 : 0.6;

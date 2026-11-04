@@ -6,9 +6,6 @@ public sealed class ProgressInteraction(bool hoverPreview = false)
     public const double DwellSeconds = 0.2;
     public const double DwellTolerance = 4;
 
-    string? _trackId;
-    long _sessionId;
-    double _duration;
     double? _scrub, _hover;
     double _anchorX, _anchorY;
     bool _previewing;
@@ -17,21 +14,10 @@ public sealed class ProgressInteraction(bool hoverPreview = false)
     public bool IsPreviewing => _previewing && !IsScrubbing;
     public double? HoverDueAt { get; private set; }
 
-    /// <summary>A changed song, session or duration invalidates any pointer position picked for it.</summary>
-    public void SetMedia(string? trackId, long sessionId, double duration)
-    {
-        duration = double.IsFinite(duration) && duration > 0 ? duration : 0;
-        if (trackId != _trackId || sessionId != _sessionId || duration != _duration || duration == 0)
-            Cancel();
-        _trackId = trackId;
-        _sessionId = sessionId;
-        _duration = duration;
-    }
-
     /// <summary>Positions are in DIPs; time is monotonic. Returning outside the bar cancels the dwell.</summary>
     public void Hover(double x, double y, double width, bool inside, double now)
     {
-        if (!hoverPreview || IsScrubbing || _duration <= 0 || !inside || !double.IsFinite(x)
+        if (!hoverPreview || IsScrubbing || !inside || !double.IsFinite(x)
             || !double.IsFinite(y) || !double.IsFinite(width) || width <= 0)
         {
             CancelPreview();
@@ -59,7 +45,7 @@ public sealed class ProgressInteraction(bool hoverPreview = false)
     public bool BeginScrub(double ratio, bool canSeek)
     {
         CancelPreview();
-        if (!canSeek || _duration <= 0 || !double.IsFinite(ratio)) return false;
+        if (!canSeek || !double.IsFinite(ratio)) return false;
         _scrub = Math.Clamp(ratio, 0, 1);
         return true;
     }
@@ -70,9 +56,9 @@ public sealed class ProgressInteraction(bool hoverPreview = false)
     }
 
     /// <summary>The only operation that returns a seek target. Preview state can never reach it.</summary>
-    public double? ReleaseScrub(bool canSeek)
+    public double? ReleaseScrub(double duration, bool canSeek)
     {
-        double? target = canSeek && _duration > 0 && _scrub is double ratio ? ratio * _duration : null;
+        double? target = canSeek && _scrub is double ratio ? ratio * duration : null;
         Cancel();
         return target;
     }
@@ -91,13 +77,13 @@ public sealed class ProgressInteraction(bool hoverPreview = false)
     }
 
     /// <summary>Hover changes the elapsed label and fill; remaining time keeps following real playback.</summary>
-    public ProgressDisplay Display(double playerPosition)
+    public ProgressDisplay Display(double playerPosition, double duration)
     {
-        double actual = double.IsFinite(playerPosition) ? Math.Clamp(playerPosition, 0, _duration) : 0;
-        double shown = _scrub is double scrub ? scrub * _duration
-            : IsPreviewing && _hover is double hover ? hover * _duration : actual;
-        double remaining = _duration - (IsScrubbing ? shown : actual);
-        return new ProgressDisplay(shown, remaining, _duration > 0 ? shown / _duration : 0, IsPreviewing);
+        double actual = double.IsFinite(playerPosition) ? Math.Clamp(playerPosition, 0, duration) : 0;
+        double shown = _scrub is double scrub ? scrub * duration
+            : IsPreviewing && _hover is double hover ? hover * duration : actual;
+        double remaining = duration - (IsScrubbing ? shown : actual);
+        return new ProgressDisplay(shown, remaining, duration > 0 ? shown / duration : 0, IsPreviewing);
     }
 }
 

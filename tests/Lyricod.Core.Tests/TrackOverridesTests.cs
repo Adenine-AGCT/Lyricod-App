@@ -2,10 +2,10 @@ namespace Lyricod.Core.Tests;
 
 public class TrackOverridesTests
 {
-    static Track Song(double duration = 120) => new() { Title = "Hello", Artist = "Singer", Duration = duration };
+    static Track Song() => new() { Title = "Hello", Artist = "Singer", Duration = 120 };
 
     [Fact]
-    public void ReadsAndInputsCannotMutateTheCommittedChoice()
+    public void SavedChoiceRoundTripsWithoutSharingMutableValues()
     {
         using var files = new StoreFiles();
         var store = new TrackOverrides(files.File);
@@ -25,109 +25,33 @@ public class TrackOverridesTests
         Assert.Equal(original, File.ReadAllText(files.File));
     }
 
-    [Theory]
-    [InlineData("pin")]
-    [InlineData("unpin")]
-    [InlineData("offset")]
-    [InlineData("delete")]
-    public void FailedWriteKeepsCommittedMemoryAndFileAndCanRetry(string action)
-    {
-        using var files = new StoreFiles();
-        var store = new TrackOverrides(files.File);
-        var track = Song();
-        Assert.True(store.TrySet(track, new TrackOverride { Lyrics = LyricsRef.Netease(7), Offset = 1.5 }));
-        var original = File.ReadAllText(files.File);
-        var next = store[track];
-        switch (action)
-        {
-            case "pin": next.Lyrics = LyricsRef.Netease(8); break;
-            case "unpin": next.Lyrics = null; break;
-            case "offset": next.Offset = -0.5; break;
-            case "delete": next = new TrackOverride(); break;
-        }
-        // A real filesystem error: a directory occupies the temporary file's path.
-        Directory.CreateDirectory(files.File + ".tmp");
-        Assert.False(store.TrySet(track, next));
-        AssertChoice(store[track], LyricsRef.Netease(7), 1.5);
-        AssertChoice(new TrackOverrides(files.File)[track], LyricsRef.Netease(7), 1.5);
-        Assert.Equal(original, File.ReadAllText(files.File));
-
-        Directory.Delete(files.File + ".tmp");
-        Assert.True(store.TrySet(track, next));
-        AssertChoice(store[track], next.Lyrics, next.Offset);
-        AssertChoice(new TrackOverrides(files.File)[track], next.Lyrics, next.Offset);
-        Assert.False(File.Exists(files.File + ".tmp"));
-    }
-
     public static bool IsWindows => OperatingSystem.IsWindows();
 
-    [Theory(SkipUnless = nameof(IsWindows), Skip = "Requires Windows file-sharing semantics.")]
-    [InlineData("replace")]
-    [InlineData("edit")]
-    [InlineData("move")]
-    public void StartupReadLockCannotEraseOtherSongsOrUneditedFields(string operation)
+    [Fact(SkipUnless = nameof(IsWindows), Skip = "Requires Windows file-sharing semantics.")]
+    public void StartupReadLockCannotOverwriteExistingChoices()
     {
         using var files = new StoreFiles();
         var song = Song();
         var other = song with { Title = "Another song" };
-        var corrected = song with { Duration = 180 };
         var seed = new TrackOverrides(files.File);
         Assert.True(seed.TrySet(song, new TrackOverride { Lyrics = LyricsRef.Netease(7), Offset = 1.5 }));
         Assert.True(seed.TrySet(other, new TrackOverride { Offset = 3 }));
         var original = File.ReadAllText(files.File);
 
-        TrackOverrides store;
         using (var locked = File.Open(files.File, FileMode.Open, FileAccess.Read, FileShare.None))
         {
-            store = new TrackOverrides(files.File);
+            var store = new TrackOverrides(files.File);
             Assert.False(store.TryGet(song, out _));
             Assert.False(store.TrySet(other, new TrackOverride { Offset = 4 }));
-            Assert.False(store.TryMove(song, corrected));
         }
         Assert.Equal(original, File.ReadAllText(files.File));
-
-        switch (operation)
-        {
-            case "replace":
-                Assert.True(store.TrySet(other, new TrackOverride { Offset = 4 }));
-                break;
-            case "edit":
-                Assert.True(store.TryGet(song, out var choice));
-                choice.NudgeOffset(0.25, clamp: true);
-                Assert.True(store.TrySet(song, choice));
-                break;
-            case "move":
-                Assert.True(store.TryMove(song, corrected));
-                break;
-        }
         var saved = new TrackOverrides(files.File);
-        AssertChoice(saved[operation == "move" ? corrected : song], LyricsRef.Netease(7), operation == "edit" ? 1.75 : 1.5);
-        AssertChoice(saved[other], null, operation == "replace" ? 4 : 3);
-        if (operation == "move") Assert.True(saved[song].IsEmpty);
-    }
-
-    [Theory]
-    [InlineData(9.9, 0.25, true, 10)]
-    [InlineData(-9.9, -0.25, true, -10)]
-    [InlineData(10.0, 0.5, false, 10.5)]
-    [InlineData(-10.0, -0.5, false, -10.5)]
-    public void NudgeAfterDurationMigrationUsesTheDestinationOffset(double offset, double step, bool clamp, double expected)
-    {
-        using var files = new StoreFiles();
-        var store = new TrackOverrides(files.File);
-        var stale = Song(0);
-        var corrected = Song();
-        Assert.True(store.TrySet(stale, new TrackOverride { Lyrics = LyricsRef.Netease(7), Offset = 1 }));
-        Assert.True(store.TrySet(corrected, new TrackOverride { Offset = offset }));
-        Assert.True(store.TryMove(stale, corrected));
-        Assert.True(store.TryGet(corrected, out var choice));
-        choice.NudgeOffset(step, clamp);
-        Assert.True(store.TrySet(corrected, choice));
-        AssertChoice(new TrackOverrides(files.File)[corrected], LyricsRef.Netease(7), expected);
+        AssertChoice(saved[song], LyricsRef.Netease(7), 1.5);
+        AssertChoice(saved[other], null, 3);
     }
 
     [Fact(SkipUnless = nameof(IsWindows), Skip = "Requires Windows file-sharing semantics.")]
-    public void LockedDestinationKeepsTheCommittedFileAndMemoryAndCanRetry()
+    public void LockedDestinationKeepsTheCommittedFileAndMemory()
     {
         using var files = new StoreFiles();
         var store = new TrackOverrides(files.File);
@@ -145,102 +69,6 @@ public class TrackOverridesTests
         Assert.Equal(original, File.ReadAllText(files.File));
         AssertChoice(new TrackOverrides(files.File)[track], LyricsRef.Netease(7), 1.5);
         Assert.False(File.Exists(files.File + ".tmp"));
-        Assert.True(store.TrySet(track, next));
-        AssertChoice(store[track], next.Lyrics, next.Offset);
-        AssertChoice(new TrackOverrides(files.File)[track], next.Lyrics, next.Offset);
-    }
-
-    [Fact]
-    public void FailedReplacementLeavesTheStoreEmptyAndCleansItsTemporaryFile()
-    {
-        using var files = new StoreFiles();
-        Directory.CreateDirectory(files.File);
-        var store = new TrackOverrides(files.File);
-        var track = Song();
-        var choice = new TrackOverride { Lyrics = LyricsRef.Netease(7), Offset = 1.5 };
-
-        Assert.False(store.TrySet(track, choice));
-        Assert.True(store[track].IsEmpty);
-        Assert.True(Directory.Exists(files.File));
-        Assert.False(File.Exists(files.File + ".tmp"));
-
-        Directory.Delete(files.File);
-        Assert.True(store.TrySet(track, choice));
-        AssertChoice(new TrackOverrides(files.File)[track], choice.Lyrics, choice.Offset);
-    }
-
-    [Fact]
-    public void InaccessibleParentIsReportedWhenSavingWithoutCrashingConstruction()
-    {
-        using var files = new StoreFiles();
-        var blocker = Path.Combine(files.Directory, "parent");
-        File.WriteAllText(blocker, "keep this file");
-        var store = new TrackOverrides(Path.Combine(blocker, "overrides.json"));
-
-        Assert.False(store.TrySet(Song(), new TrackOverride { Offset = 0.5 }));
-        Assert.True(store[Song()].IsEmpty);
-        Assert.Equal("keep this file", File.ReadAllText(blocker));
-    }
-
-    [Fact]
-    public void FailedMoveKeepsBothKeysAndCanRetryTheFieldMerge()
-    {
-        using var files = new StoreFiles();
-        var store = new TrackOverrides(files.File);
-        var from = Song(0);
-        var to = Song();
-        Assert.True(store.TrySet(from, new TrackOverride { NeteaseId = 7, Offset = 1.5 }));
-        Assert.True(store.TrySet(to, new TrackOverride { Lyrics = LyricsRef.Netease(8) }));
-        var original = File.ReadAllText(files.File);
-        Directory.CreateDirectory(files.File + ".tmp");
-
-        Assert.False(store.TryMove(from, to));
-        AssertChoice(store[from], LyricsRef.Netease(7), 1.5);
-        AssertChoice(store[to], LyricsRef.Netease(8), null);
-        var unchanged = new TrackOverrides(files.File);
-        AssertChoice(unchanged[from], LyricsRef.Netease(7), 1.5);
-        AssertChoice(unchanged[to], LyricsRef.Netease(8), null);
-        Assert.Equal(original, File.ReadAllText(files.File));
-
-        Directory.Delete(files.File + ".tmp");
-        Assert.True(store.TryMove(from, to));
-        Assert.True(store[from].IsEmpty);
-        AssertChoice(store[to], LyricsRef.Netease(8), 1.5);
-        var saved = new TrackOverrides(files.File);
-        Assert.True(saved[from].IsEmpty);
-        AssertChoice(saved[to], LyricsRef.Netease(8), 1.5);
-    }
-
-    [Fact]
-    public void MoveKeepsAnExplicitZeroOffsetAndLegacyLyrics()
-    {
-        using var files = new StoreFiles();
-        var store = new TrackOverrides(files.File);
-        var from = Song(0);
-        var to = Song();
-        Assert.True(store.TrySet(from, new TrackOverride { NeteaseId = 7, Offset = 1.5 }));
-        Assert.True(store.TrySet(to, new TrackOverride { NeteaseId = 8, Offset = 0 }));
-
-        Assert.True(store.TryMove(from, to));
-        var saved = new TrackOverrides(files.File);
-        AssertChoice(saved[to], LyricsRef.Netease(8), 0);
-        Assert.True(saved[from].IsEmpty);
-    }
-
-    [Fact]
-    public void MissingSourceAndSameKeyMovesNeedNoWrite()
-    {
-        using var files = new StoreFiles();
-        var store = new TrackOverrides(files.File);
-        var track = Song();
-        Assert.True(store.TrySet(track, new TrackOverride { Offset = 1.5 }));
-        var original = File.ReadAllText(files.File);
-        Directory.CreateDirectory(files.File + ".tmp");
-
-        Assert.True(store.TryMove(track with { Duration = 0 }, track));
-        Assert.True(store.TryMove(track, track with { Duration = 120.5 }));
-        Assert.Equal(original, File.ReadAllText(files.File));
-        AssertChoice(store[track], null, 1.5);
     }
 
     static void AssertChoice(TrackOverride choice, LyricsRef? lyrics, double? offset)

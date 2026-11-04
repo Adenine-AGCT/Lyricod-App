@@ -15,7 +15,7 @@ namespace Lyricod;
 public sealed partial class PlaybackModel
 {
     [Flags]
-    public enum Change { None = 0, Track = 1, Lyrics = 2, Line = 4, Clock = 8, Artwork = 16, Diagnostics = 32, Progress = 64, Session = 128 }
+    public enum Change { None = 0, Track = 1, Lyrics = 2, Line = 4, Clock = 8, Artwork = 16, Diagnostics = 32, Progress = 64 }
 
     public event Action<Change>? Changed;
 
@@ -82,8 +82,6 @@ public sealed partial class PlaybackModel
     /// <summary>The song's length correction was already attempted automatically.</summary>
     bool _lengthCorrected;
     bool _refreshing, _refreshAgain;
-    TaskCompletionSource? _refreshCompletion;
-    int _seekRequest;
     /// <summary>Lyricod is quitting (<see cref="Stop"/>).</summary>
     bool _stopped;
 
@@ -171,28 +169,22 @@ public sealed partial class PlaybackModel
 
     async Task Refresh()
     {
-        // Coalesce concurrent callers, but let controls await the snapshot they need.
-        if (_refreshing) { _refreshAgain = true; await _refreshCompletion!.Task; return; }
+        // One read at a time; a change during a read triggers one more.
+        if (_refreshing) { _refreshAgain = true; return; }
         _refreshing = true;
-        var completion = _refreshCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        _refreshAgain = false;
         try
         {
-            long session = _media.SessionId;
-            var report = await _media.ReadAsync();
-            if (session != _media.SessionId) _refreshAgain = true;
-            else Apply(report);
-            if (report != null && report.Revision != _media.Revision) _refreshAgain = true;
+            do
+            {
+                _refreshAgain = false;
+                long session = _media.SessionId;
+                var report = await _media.ReadAsync();
+                if (session != _media.SessionId) { _refreshAgain = true; continue; }
+                Apply(report);
+            } while (_refreshAgain && !_stopped);
         }
         catch (Exception e) { LastError = "refresh: " + e.Message; }
-        finally
-        {
-            _refreshing = false;
-            completion.TrySetResult();
-            // Publish every useful snapshot during frequent metadata updates. Queue
-            // another read without indefinitely delaying the current control request.
-            if (_refreshAgain && !_stopped) Post(() => _ = Refresh());
-        }
+        finally { _refreshing = false; }
     }
 
     void Apply(NowPlaying? now)
@@ -220,11 +212,10 @@ public sealed partial class PlaybackModel
             return;
         }
 
-        if (now.SessionId != NowPlaying?.SessionId) change |= Change.Session;
         if (now.Duration != NowPlaying?.Duration || now.CanSeek != NowPlaying?.CanSeek) change |= Change.Progress;
         NowPlaying = now;
         double at = Now;
-        if (_mediaClock.Apply(new MediaClockReport(now.SessionId, now.Revision, now.TrackId, now.Position, now.PositionAt,
+        if (_mediaClock.Apply(new MediaClockReport(now.TrackId, now.Position, now.PositionAt,
                 now.IsPlaying, now.HasTimeline), DateTimeOffset.UtcNow, at, out bool trackChanged)) change |= Change.Clock;
 
         if (trackChanged)
@@ -281,18 +272,13 @@ public sealed partial class PlaybackModel
         {
             double target = Math.Clamp(seconds, 0, Duration > 0 ? Duration : double.MaxValue);
             if (NowPlaying is not { } source) return;
-            int request = ++_seekRequest;
-            var seek = _mediaClock.BeginSeek(target, DateTimeOffset.UtcNow, Now);
             if (!await _media.Seek(target, source) || _stopped) return;
-            // Resolve metadata updates before deciding whether the old song can still
-            // receive local feedback; the command itself may have triggered a new song.
-            await Refresh();
-            if (!_stopped && request == _seekRequest && source.SessionId == _media.SessionId &&
-                    source.SessionId == NowPlaying?.SessionId && source.TrackId == NowPlaying?.TrackId)
+            if (source.SessionId == _media.SessionId)
             {
-                _mediaClock.Seek(seek, Now);
+                _playhead.Anchor(target, Now, _playhead.IsPlaying);
                 Finish(Change.Clock);
             }
+            await Refresh();
         }
         catch (Exception) { /* the player went away */ }
     }

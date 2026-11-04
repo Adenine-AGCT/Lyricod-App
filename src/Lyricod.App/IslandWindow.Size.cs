@@ -74,7 +74,7 @@ public sealed partial class IslandWindow
             {
                 try
                 {
-                    if (_closed || !_shown || !ReferenceEquals(_widthAnimation, story)) return;
+                    if (_closed || !ReferenceEquals(_widthAnimation, story)) return;
                     _widthAnimating = false;
                     _waitingForWidth = false;
                     RevealText();
@@ -105,7 +105,7 @@ public sealed partial class IslandWindow
             _heightAnimation = story;
             story.Completed += (_, _) =>
             {
-                try { if (!_closed && _shown && ReferenceEquals(_heightAnimation, story)) Place(); }
+                try { if (!_closed && ReferenceEquals(_heightAnimation, story)) Place(); }
                 catch (Exception e) { System.Diagnostics.Debug.WriteLine(e); }
             };
             story.Begin();
@@ -156,21 +156,6 @@ public sealed partial class IslandWindow
             _transitionPending = false;
             MoveIn();
         }
-    }
-
-    /// <summary>Stop lyric/layout work while hidden, preserving the current size for the exit fade.</summary>
-    void StopContentAnimations()
-    {
-        double width = Pill.Width, height = Pill.Height;
-        _revealTimer.Stop();
-        _lineAnimation?.Stop();
-        _widthAnimation?.Stop();
-        _heightAnimation?.Stop();
-        _lineAnimation = _widthAnimation = _heightAnimation = null;
-        Pill.Width = width;
-        Pill.Height = height;
-        _widthTarget = _heightTarget = double.NaN;
-        _waitingForWidth = _widthAnimating = _transitionPending = false;
     }
 
     double Measure(string text, FontFamily font, double size, Windows.UI.Text.FontWeight weight)
